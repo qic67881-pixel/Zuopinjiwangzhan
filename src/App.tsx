@@ -871,13 +871,14 @@ export default function App() {
   const handleLogin = async (password: string) => {
     setIsUploading(true); // Reuse uploading state as a generic loading state
     try {
-      console.log("Sending login request...");
+      console.log("Sending login request to /api/login...");
       const response = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password, _t: Date.now() })
       });
       
+      console.log("Login response status:", response.status);
       const result = await response.json();
       
       if (result.success) {
