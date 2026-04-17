@@ -1052,6 +1052,11 @@ export default function App() {
     const mediaItems: MediaItem[] = [];
 
     if (newProjectData.file) {
+      if (newProjectData.file.size > 1.5 * 1024 * 1024) {
+        alert("文件太大！Firebase 数据库单个作品限制为 1.5MB 以内（这是为了保证您网站的加载速度）。建议：上传更小的视频，或将其上传到第三方平台后使用外部链接。");
+        setIsUploading(false);
+        return;
+      }
       const file = newProjectData.file;
       const type = file.type.startsWith("video") ? "video" : "image";
       const url = await new Promise<string>((resolve) => {
@@ -1247,7 +1252,7 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => !isUploading && setShowUploadModal(false)}
+              onClick={() => setShowUploadModal(false)}
               className="absolute inset-0 bg-background/80 backdrop-blur-sm"
             />
             <motion.div 
@@ -1259,7 +1264,7 @@ export default function App() {
             >
               <div className="flex justify-between items-center mb-8">
                 <h2 className="text-2xl font-bold">上传新作品</h2>
-                <button onClick={() => !isUploading && setShowUploadModal(false)} className="text-text-dim hover:text-text-main">
+                <button onClick={() => setShowUploadModal(false)} className="text-text-dim hover:text-text-main">
                   <X size={24} />
                 </button>
               </div>
