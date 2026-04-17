@@ -54,14 +54,19 @@ app.post("/api/data", async (req, res) => {
 });
 
 // Setup Rendering
-if (process.env.VERCEL) {
+const isProd = process.env.NODE_ENV === "production" || process.env.VERCEL;
+
+if (isProd) {
+  console.log("Starting in PRODUCTION mode");
   const distPath = path.join(process.cwd(), "dist");
   app.use(express.static(distPath));
   app.get("*", (req, res) => {
     if (req.path.startsWith("/api/")) return res.status(404).json({ error: "API not found" });
-    res.sendFile(path.join(distPath, "index.html"));
+    const indexPath = path.join(distPath, "index.html");
+    res.sendFile(indexPath);
   });
 } else {
+  console.log("Starting in DEVELOPMENT mode (Vite)");
   // Use Vite in development (AI Studio)
   try {
     const { createServer: createViteServer } = await import("vite");
@@ -71,8 +76,8 @@ if (process.env.VERCEL) {
     });
     app.use(vite.middlewares);
   } catch (e) {
-    console.error("Failed to start Vite dev server:", e);
-    // Fallback to static if vite fails but dist exists
+    console.error("CRITICAL: Failed to start Vite dev server:", e);
+    // Emergency fallback to dist
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {

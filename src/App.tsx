@@ -1,4 +1,4 @@
-import { useState, useEffect, ChangeEvent } from "react";
+import { useState, useEffect, ChangeEvent, Component, ReactNode } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Github, Linkedin, Twitter, Mail, ExternalLink, ArrowRight, Edit2, Plus, X, Check, Trash2, ArrowLeft, Play, Maximize2 } from "lucide-react";
 import { Routes, Route, useNavigate, useParams, Link } from "react-router-dom";
@@ -754,6 +754,49 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
   );
 }
 
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: "20px", color: "white", background: "#1a1a1a", minHeight: "100vh" }}>
+          <h1>Oops! Something went wrong.</h1>
+          <p>{this.state.error?.message}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            style={{ padding: "10px 20px", background: "#0081FF", border: "none", color: "white", borderRadius: "5px" }}
+          >
+            Reload Page
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 export default function App() {
   // State for categories
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
@@ -800,18 +843,24 @@ export default function App() {
         if (savedRole) setUserRole(savedRole);
         if (savedBio) setUserBio(savedBio);
 
-        // idb-keyval might fail in some iframe environments
-        const savedAvatar = await get("portfolio_avatar").catch(() => null);
-        const savedProjects = await get("portfolio_projects").catch(() => null);
-        const savedPageContents = await get("portfolio_page_contents").catch(() => null);
-        const savedTheme = await get("portfolio_theme").catch(() => null);
-        const savedCategories = await get("portfolio_categories").catch(() => null);
+        // idb-keyval might hang in some iframe environments, so we use a timeout
+        const withTimeout = (promise: Promise<any>, timeout = 1000) => {
+          return Promise.race([
+            promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), timeout))
+          ]);
+        };
 
-        if (savedAvatar) setAvatarUrl(savedAvatar);
-        if (savedProjects) setProjects(savedProjects);
-        if (savedPageContents) setPageContents(savedPageContents);
-        if (savedTheme) setThemeSettings(savedTheme);
-        if (savedCategories) setCategories(savedCategories);
+        const savedAvatar = await withTimeout(get("portfolio_avatar")).catch(() => null);
+        const savedProjects = await withTimeout(get("portfolio_projects")).catch(() => null);
+        const savedPageContents = await withTimeout(get("portfolio_page_contents")).catch(() => null);
+        const savedTheme = await withTimeout(get("portfolio_theme")).catch(() => null);
+        const savedCategories = await withTimeout(get("portfolio_categories")).catch(() => null);
+
+        if (savedProjects) setProjects(Array.isArray(savedProjects) ? savedProjects : INITIAL_PROJECTS);
+        if (savedPageContents) setPageContents({ ...INITIAL_PAGE_CONTENT, ...savedPageContents });
+        if (savedTheme) setThemeSettings({ ...INITIAL_THEME, ...savedTheme });
+        if (savedCategories) setCategories(Array.isArray(savedCategories) ? savedCategories : DEFAULT_CATEGORIES);
       } catch (localErr) {
         console.warn("Failed to load local data:", localErr);
       }
@@ -827,10 +876,10 @@ export default function App() {
           if (serverData.userRole) setUserRole(serverData.userRole);
           if (serverData.userBio) setUserBio(serverData.userBio);
           if (serverData.avatarUrl) setAvatarUrl(serverData.avatarUrl);
-          if (serverData.projects) setProjects(serverData.projects);
-          if (serverData.pageContents) setPageContents(serverData.pageContents);
-          if (serverData.themeSettings) setThemeSettings(serverData.themeSettings);
-          if (serverData.categories) setCategories(serverData.categories);
+          if (serverData.projects && Array.isArray(serverData.projects)) setProjects(serverData.projects);
+          if (serverData.pageContents) setPageContents(prev => ({ ...prev, ...serverData.pageContents }));
+          if (serverData.themeSettings) setThemeSettings(prev => ({ ...prev, ...serverData.themeSettings }));
+          if (serverData.categories && Array.isArray(serverData.categories)) setCategories(serverData.categories);
         }
       } catch (err) {
         console.warn("Failed to sync with server:", err);
@@ -959,8 +1008,8 @@ export default function App() {
   };
 
   return (
-    <>
-      <div style={{ position: 'fixed', top: 0, left: 0, background: 'red', color: 'white', zIndex: 9999, fontSize: '10px', padding: '2px' }}>V2</div>
+    <ErrorBoundary>
+      <div style={{ position: 'fixed', top: 0, left: 0, background: 'red', color: 'white', zIndex: 9999, fontSize: '10px', padding: '2px' }}>V3</div>
       <Routes>
         <Route path="/" element={
           <PortfolioHome 
@@ -1486,6 +1535,6 @@ export default function App() {
           </div>
         </div>
       </footer>
-    </>
+    </ErrorBoundary>
   );
 }

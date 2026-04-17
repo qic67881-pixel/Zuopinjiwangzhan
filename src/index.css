@@ -16,3 +16,33 @@
     @apply bg-background text-text-main font-sans antialiased;
   }
 }
+
+@layer components {
+  .nav-link {
+    @apply text-[13px] uppercase tracking-wider font-medium text-text-dim hover:text-text-main transition-colors;
+  }
+  
+  .nav-link.active {
+    @apply text-text-main;
+  }
+
+  .cat-pill {
+    @apply px-5 py-2 border border-border-custom rounded-full text-[12px] text-text-dim bg-surface uppercase tracking-wider transition-all hover:border-text-main;
+  }
+
+  .cat-pill.active {
+    @apply bg-text-main text-background border-text-main;
+  }
+
+  .work-card {
+    @apply bg-surface border border-border-custom rounded-xl relative overflow-hidden aspect-4/3 cursor-pointer;
+  }
+
+  .card-overlay {
+    @apply absolute inset-0 p-6 bg-linear-to-t from-black/80 to-transparent flex flex-col justify-end gap-1 transition-all duration-300;
+  }
+
+  .social-btn {
+    @apply w-10 h-10 border border-border-custom flex items-center justify-center rounded-sm text-text-main bg-transparent hover:bg-white/5 transition-colors;
+  }
+}
