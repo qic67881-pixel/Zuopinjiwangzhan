@@ -1039,12 +1039,11 @@ export default function App() {
 
   // Save Profile
   const saveProfile = async () => {
+    if (!isAdmin) return;
     setIsEditingProfile(false);
-    if (isAdmin) {
-      await saveToFirebase("settings", "config", {
-        websiteName, userName, userRole, userBio, avatarUrl, categories
-      });
-    }
+    await saveToFirebase("settings", "config", {
+      websiteName, userName, userRole, userBio, avatarUrl, categories
+    });
   };
 
   const addProject = async (newProjectData: { title: string; category: Category; tag: string; color: string; description: string; file?: File }) => {
@@ -1154,10 +1153,11 @@ export default function App() {
       </Routes>
 
       {/* Login Modal */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {showLoginModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div key="login-modal-overlay" className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div 
+              key="login-bg"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -1165,6 +1165,7 @@ export default function App() {
               className="absolute inset-0 bg-black/80 backdrop-blur-sm"
             />
             <motion.div 
+              key="login-content-box"
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -1238,10 +1239,11 @@ export default function App() {
 
 
       {/* Upload Modal */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {showUploadModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+          <div key="upload-modal-overlay" className="fixed inset-0 z-[100] flex items-center justify-center p-6">
             <motion.div 
+              key="upload-bg"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -1249,6 +1251,7 @@ export default function App() {
               className="absolute inset-0 bg-background/80 backdrop-blur-sm"
             />
             <motion.div 
+              key="upload-content-box"
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -1339,10 +1342,11 @@ export default function App() {
       </AnimatePresence>
 
       {/* Settings Modal */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {showSettingsModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+          <div key="settings-modal-overlay" className="fixed inset-0 z-[100] flex items-center justify-center p-6">
             <motion.div 
+              key="settings-bg"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -1350,6 +1354,7 @@ export default function App() {
               className="absolute inset-0 bg-background/80 backdrop-blur-sm"
             />
             <motion.div 
+              key="settings-content-box"
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
