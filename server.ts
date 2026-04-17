@@ -35,13 +35,37 @@ async function startServer() {
   };
 
   // API Routes
+  const AUTH_TOKEN = "authenticated-session-token";
+
+  app.post("/api/login", (req, res) => {
+    try {
+      const { password } = req.body;
+      const inputPassword = ((password as string) || "").trim();
+      const targetPassword = ((process.env.ADMIN_PASSWORD as string) || "qicheng1314.").trim();
+
+      console.log(`[AUTH] Login Attempt - Received: "${inputPassword}", Expected: "${targetPassword}"`);
+
+      if (inputPassword === targetPassword) {
+        return res.json({ success: true, token: AUTH_TOKEN });
+      } else {
+        return res.status(401).json({ success: false, message: "密码校验失败，请重试" });
+      }
+    } catch (err) {
+      console.error("[AUTH] Server Error:", err);
+      return res.status(500).json({ success: false, message: "服务器内部错误" });
+    }
+  });
+
   app.get("/api/data", async (req, res) => {
     const data = await readData();
     res.json(data || {});
   });
 
   app.post("/api/data", async (req, res) => {
-    const { data } = req.body;
+    const { data, token } = req.body;
+    if (token !== AUTH_TOKEN) {
+      return res.status(403).json({ success: false, message: "Unauthorized" });
+    }
     await writeData(data);
     res.json({ success: true });
   });
@@ -63,6 +87,7 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Admin password is set to: ${ADMIN_PASSWORD}`);
   });
 }
 
