@@ -77,39 +77,35 @@ app.post("/api/data", async (req, res) => {
 });
 
 // Vite middleware for development - Optimized for Vercel (Dynamic Import)
-const setupMiddleware = async () => {
-  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
+if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+  const { createServer: createViteServer } = await import("vite");
+  const vite = await createViteServer({
+    server: { middlewareMode: true },
+    appType: "spa",
+  });
+  app.use(vite.middlewares);
+} else {
+  const distPath = path.join(process.cwd(), "dist");
+  
+  // Check if dist/index.html exists to avoid 500 errors
+  try {
+    await fs.access(path.join(distPath, "index.html"));
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      if (req.path.startsWith("/api/")) {
+        return res.status(404).json({ error: "API route not found" });
+      }
+      res.sendFile(path.join(distPath, "index.html"));
     });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    
-    // Check if dist/index.html exists to avoid 500 errors
-    try {
-      await fs.access(path.join(distPath, "index.html"));
-      app.use(express.static(distPath));
-      app.get("*", (req, res) => {
-        if (req.path.startsWith("/api/")) {
-          return res.status(404).json({ error: "API route not found" });
-        }
-        res.sendFile(path.join(distPath, "index.html"));
-      });
-    } catch (e) {
-      app.get("*", (req, res) => {
-        if (req.path.startsWith("/api/")) {
-          return res.status(404).json({ error: "API route not found" });
-        }
-        res.send("Application is building or static files are missing. Please wait and refresh.");
-      });
-    }
+  } catch (e) {
+    app.get("*", (req, res) => {
+      if (req.path.startsWith("/api/")) {
+        return res.status(404).json({ error: "API route not found" });
+      }
+      res.send("Application is building or static files are missing. Please wait and refresh.");
+    });
   }
-};
-
-setupMiddleware();
+}
 
 // Only listen if not on Vercel
 if (!process.env.VERCEL) {
