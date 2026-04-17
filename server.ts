@@ -13,7 +13,7 @@ const DATA_FILE = path.join(__dirname, "data.json");
 const AUTH_TOKEN = "public-access";
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = 3000;
 
 app.use(express.json({ limit: "50mb" }));
 
@@ -54,7 +54,7 @@ app.post("/api/data", async (req, res) => {
 });
 
 // Setup Rendering
-if (process.env.VERCEL || process.env.NODE_ENV === "production") {
+if (process.env.VERCEL) {
   const distPath = path.join(process.cwd(), "dist");
   app.use(express.static(distPath));
   app.get("*", (req, res) => {
@@ -63,12 +63,22 @@ if (process.env.VERCEL || process.env.NODE_ENV === "production") {
   });
 } else {
   // Use Vite in development (AI Studio)
-  const { createServer: createViteServer } = await import("vite");
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: "spa",
-  });
-  app.use(vite.middlewares);
+  try {
+    const { createServer: createViteServer } = await import("vite");
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } catch (e) {
+    console.error("Failed to start Vite dev server:", e);
+    // Fallback to static if vite fails but dist exists
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
 }
 
 if (!process.env.VERCEL) {

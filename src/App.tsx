@@ -789,25 +789,32 @@ export default function App() {
   useEffect(() => {
     const loadData = async () => {
       // 1. Load from local cache first for speed
-      const savedWebsiteName = localStorage.getItem("portfolio_website_name");
-      const savedName = localStorage.getItem("portfolio_name");
-      const savedRole = localStorage.getItem("portfolio_role");
-      const savedBio = localStorage.getItem("portfolio_bio");
-      const savedAvatar = await get("portfolio_avatar");
-      const savedProjects = await get("portfolio_projects");
-      const savedPageContents = await get("portfolio_page_contents");
-      const savedTheme = await get("portfolio_theme");
-      const savedCategories = await get("portfolio_categories");
+      try {
+        const savedWebsiteName = localStorage.getItem("portfolio_website_name");
+        const savedName = localStorage.getItem("portfolio_name");
+        const savedRole = localStorage.getItem("portfolio_role");
+        const savedBio = localStorage.getItem("portfolio_bio");
+        
+        if (savedWebsiteName) setWebsiteName(savedWebsiteName);
+        if (savedName) setUserName(savedName);
+        if (savedRole) setUserRole(savedRole);
+        if (savedBio) setUserBio(savedBio);
 
-      if (savedWebsiteName) setWebsiteName(savedWebsiteName);
-      if (savedName) setUserName(savedName);
-      if (savedRole) setUserRole(savedRole);
-      if (savedBio) setUserBio(savedBio);
-      if (savedAvatar) setAvatarUrl(savedAvatar);
-      if (savedProjects) setProjects(savedProjects);
-      if (savedPageContents) setPageContents(savedPageContents);
-      if (savedTheme) setThemeSettings(savedTheme);
-      if (savedCategories) setCategories(savedCategories);
+        // idb-keyval might fail in some iframe environments
+        const savedAvatar = await get("portfolio_avatar").catch(() => null);
+        const savedProjects = await get("portfolio_projects").catch(() => null);
+        const savedPageContents = await get("portfolio_page_contents").catch(() => null);
+        const savedTheme = await get("portfolio_theme").catch(() => null);
+        const savedCategories = await get("portfolio_categories").catch(() => null);
+
+        if (savedAvatar) setAvatarUrl(savedAvatar);
+        if (savedProjects) setProjects(savedProjects);
+        if (savedPageContents) setPageContents(savedPageContents);
+        if (savedTheme) setThemeSettings(savedTheme);
+        if (savedCategories) setCategories(savedCategories);
+      } catch (localErr) {
+        console.warn("Failed to load local data:", localErr);
+      }
 
       // 2. Fetch from server to sync
       try {
@@ -953,6 +960,7 @@ export default function App() {
 
   return (
     <>
+      <div style={{ position: 'fixed', top: 0, left: 0, background: 'red', color: 'white', zIndex: 9999, fontSize: '10px', padding: '2px' }}>V2</div>
       <Routes>
         <Route path="/" element={
           <PortfolioHome 
