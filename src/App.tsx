@@ -556,7 +556,7 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
     categories, setCategories,
     isEditingProfile, setIsEditingProfile, setUserName, setUserRole, setUserBio, saveProfile,
     setShowUploadModal, deleteProject, avatarUrl, themeSettings, setShowSettingsModal, setAvatarUrl,
-    isAdmin, handleGoogleLogin, handleLogoutAdmin
+    isAdmin, handleLoginClick, handleLogoutAdmin
   }: any) {
   const navigate = useNavigate();
   
@@ -617,7 +617,7 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
             </div>
           ) : (
             <button 
-              onClick={handleGoogleLogin}
+              onClick={handleLoginClick}
               className="bg-accent/5 text-accent hover:bg-accent/20 p-2 px-4 rounded-xl transition-all flex items-center gap-2 text-xs font-medium"
             >
               <LogIn size={14} /> 后台入口
