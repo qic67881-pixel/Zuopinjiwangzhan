@@ -11,6 +11,13 @@
   --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
+body {
+  background-color: #0A0A0A;
+  color: #FFFFFF;
+  margin: 0;
+  padding: 0;
+}
+
 @layer base {
   body {
     @apply bg-background text-text-main font-sans antialiased;
