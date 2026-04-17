@@ -1,8 +1,80 @@
-import { useState, useEffect, ChangeEvent, Component, ReactNode } from "react";
+import { useState, useEffect, ChangeEvent, Component, ReactNode, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Github, Linkedin, Twitter, Mail, ExternalLink, ArrowRight, Edit2, Plus, X, Check, Trash2, ArrowLeft, Play, Maximize2 } from "lucide-react";
+import { Github, Linkedin, Twitter, Mail, ExternalLink, ArrowRight, Edit2, Plus, X, Check, Trash2, ArrowLeft, Play, Maximize2, LogIn, LogOut, Cloud } from "lucide-react";
 import { Routes, Route, useNavigate, useParams, Link } from "react-router-dom";
 import { get, set } from "idb-keyval";
+import { db, auth } from "./firebase";
+import { 
+  collection, 
+  doc, 
+  getDocs, 
+  getDoc, 
+  setDoc, 
+  onSnapshot, 
+  query, 
+  writeBatch,
+  deleteDoc
+} from "firebase/firestore";
+import { 
+  onAuthStateChanged, 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  signOut,
+  User 
+} from "firebase/auth";
+
+// Firestore Error Handling
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  // In our case, we'll log it but maybe not throw to keep app running
+  // throw new Error(JSON.stringify(errInfo));
+}
 
 type Category = string;
 
@@ -485,7 +557,7 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
     categories, setCategories,
     isEditingProfile, setIsEditingProfile, setUserName, setUserRole, setUserBio, saveProfile,
     setShowUploadModal, deleteProject, avatarUrl, themeSettings, setShowSettingsModal, setAvatarUrl,
-    isAdmin, setShowLoginModal
+    isAdmin, handleGoogleLogin, handleLogoutAdmin
   }: any) {
   const navigate = useNavigate();
   
@@ -524,16 +596,32 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
           {websiteName}
         </Link>
         <div className="hidden md:flex gap-10">
-          <Link to="/" className="nav-link active">作品 Works</Link>
+          <Link to="/" className="nav-link">作品 Works</Link>
           <Link to="/about" className="nav-link">关于 About</Link>
           <Link to="/archive" className="nav-link">归档 Archive</Link>
           <Link to="/contact" className="nav-link">联系 Contact</Link>
-          {isAdmin && (
+          {isAdmin ? (
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={() => setShowSettingsModal(true)}
+                className="bg-accent/10 text-accent hover:bg-accent hover:text-white p-2 px-3 rounded-xl transition-all flex items-center gap-2 text-xs font-bold"
+              >
+                <Edit2 size={14} /> 设置 Settings
+              </button>
+              <button 
+                onClick={handleLogoutAdmin}
+                className="text-text-dim hover:text-red-500 transition-colors"
+                title="Google Logout"
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
+          ) : (
             <button 
-              onClick={() => setShowSettingsModal(true)}
-              className="text-text-dim hover:text-accent transition-colors flex items-center gap-2"
+              onClick={handleGoogleLogin}
+              className="bg-accent/5 text-accent hover:bg-accent/20 p-2 px-4 rounded-xl transition-all flex items-center gap-2 text-xs font-medium"
             >
-              <Edit2 size={16} /> 设置 Settings
+              <LogIn size={14} /> 后台入口
             </button>
           )}
         </div>
@@ -560,6 +648,9 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
                   <div className="w-full h-full bg-linear-to-br from-[#1a1a1a] to-[#333]" />
                 )}
               </motion.div>
+              <div className="absolute top-0 -right-4">
+                <Cloud size={18} className={isAdmin ? "text-accent animate-pulse" : "text-text-dim opacity-30"} />
+              </div>
               {isAdmin && (
                 <label className="absolute -bottom-1 -right-1 w-10 h-10 bg-accent rounded-full flex items-center justify-center text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:scale-110 active:scale-95 transition-all">
                   <Plus size={18} />
@@ -764,10 +855,7 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
+  state: ErrorBoundaryState = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error) {
     return { hasError: true, error };
@@ -781,7 +869,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     if (this.state.hasError) {
       return (
         <div style={{ padding: "40px", color: "white", background: "#0a0a0a", minHeight: "100vh", fontFamily: "sans-serif", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-          <h1 style={{ color: "#0081FF", fontSize: "40px", marginBottom: "20px" }}>V4 - 修复模式</h1>
+          <h1 style={{ color: "#0081FF", fontSize: "40px", marginBottom: "20px" }}>修复模式</h1>
           <p style={{ maxWidth: "600px", lineHeight: "1.6", color: "#888" }}>
             由于数据或环境冲突，页面加载遇到了一点小波折。
           </p>
@@ -801,7 +889,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
-    return this.props.children;
+    return (this as any).props.children;
   }
 }
 
@@ -831,129 +919,105 @@ export default function App() {
   // State for theme
   const [themeSettings, setThemeSettings] = useState<ThemeSettings>(INITIAL_THEME);
 
-  // Admin Auth State
-  const [isAdmin, setIsAdmin] = useState(true);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [authToken, setAuthToken] = useState<string | null>("public-access");
+  // Auth State
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const isAdmin = currentUser?.email === "qic67881@gmail.com";
 
-  // Load from storage and server
+  // Auth Listener
   useEffect(() => {
-    const loadData = async () => {
-      // 1. Load from local cache first for speed
-      try {
-        const savedWebsiteName = localStorage.getItem("portfolio_website_name");
-        const savedName = localStorage.getItem("portfolio_name");
-        const savedRole = localStorage.getItem("portfolio_role");
-        const savedBio = localStorage.getItem("portfolio_bio");
-        
-        if (savedWebsiteName) setWebsiteName(savedWebsiteName);
-        if (savedName) setUserName(savedName);
-        if (savedRole) setUserRole(savedRole);
-        if (savedBio) setUserBio(savedBio);
-
-        // idb-keyval might hang in some iframe environments, so we use a timeout
-        const withTimeout = (promise: Promise<any>, timeout = 1000) => {
-          return Promise.race([
-            promise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), timeout))
-          ]);
-        };
-
-        const savedAvatar = await withTimeout(get("portfolio_avatar")).catch(() => null);
-        const savedProjects = await withTimeout(get("portfolio_projects")).catch(() => null);
-        const savedPageContents = await withTimeout(get("portfolio_page_contents")).catch(() => null);
-        const savedTheme = await withTimeout(get("portfolio_theme")).catch(() => null);
-        const savedCategories = await withTimeout(get("portfolio_categories")).catch(() => null);
-
-        if (savedProjects) setProjects(Array.isArray(savedProjects) ? savedProjects : INITIAL_PROJECTS);
-        if (savedPageContents) setPageContents({ ...INITIAL_PAGE_CONTENT, ...savedPageContents });
-        if (savedTheme) setThemeSettings({ ...INITIAL_THEME, ...savedTheme });
-        if (savedCategories) setCategories(Array.isArray(savedCategories) ? savedCategories : DEFAULT_CATEGORIES);
-      } catch (localErr) {
-        console.warn("Failed to load local data:", localErr);
-      }
-
-      // 2. Fetch from server to sync
-      try {
-        const response = await fetch("/api/data");
-        const serverData = await response.json();
-        
-        if (serverData && Object.keys(serverData).length > 0) {
-          if (serverData.websiteName) setWebsiteName(serverData.websiteName);
-          if (serverData.userName) setUserName(serverData.userName);
-          if (serverData.userRole) setUserRole(serverData.userRole);
-          if (serverData.userBio) setUserBio(serverData.userBio);
-          if (serverData.avatarUrl) setAvatarUrl(serverData.avatarUrl);
-          if (serverData.projects && Array.isArray(serverData.projects)) setProjects(serverData.projects);
-          if (serverData.pageContents) setPageContents(prev => ({ ...prev, ...serverData.pageContents }));
-          if (serverData.themeSettings) setThemeSettings(prev => ({ ...prev, ...serverData.themeSettings }));
-          if (serverData.categories && Array.isArray(serverData.categories)) setCategories(serverData.categories);
-        }
-      } catch (err) {
-        console.warn("Failed to sync with server:", err);
-      }
-    };
-    loadData();
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setIsAuthReady(true);
+    });
+    return () => unsub();
   }, []);
 
-  // Sync to server helper
-  const syncToServer = async (currentData: any) => {
-    if (!isAdmin || !authToken) return;
+  // Firebase Realtime Listeners
+  useEffect(() => {
+    // 1. Config
+    const unsubConfig = onSnapshot(doc(db, "settings", "config"), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        if (d.websiteName) setWebsiteName(d.websiteName);
+        if (d.userName) setUserName(d.userName);
+        if (d.userRole) setUserRole(d.userRole);
+        if (d.userBio) setUserBio(d.userBio);
+        if (d.avatarUrl) setAvatarUrl(d.avatarUrl);
+        if (d.categories) setCategories(d.categories);
+      }
+    });
+    // 2. Theme
+    const unsubTheme = onSnapshot(doc(db, "settings", "theme"), (snap) => {
+      if (snap.exists()) setThemeSettings(snap.data() as ThemeSettings);
+    });
+    // 3. Projects
+    const unsubProjects = onSnapshot(collection(db, "projects"), (snap) => {
+      const p: Project[] = [];
+      snap.forEach(d => p.push(d.data() as Project));
+      if (p.length > 0) setProjects(p);
+    });
+    // 4. Pages
+    const unsubPages = onSnapshot(collection(db, "pages"), (snap) => {
+      const c = { ...INITIAL_PAGE_CONTENT };
+      snap.forEach(d => { c[d.id] = d.data() as PageContent; });
+      setPageContents(c);
+    });
+    return () => {
+      unsubConfig(); unsubTheme(); unsubProjects(); unsubPages();
+    };
+  }, []);
+
+  // Sync to Firebase helper
+  const saveToFirebase = async (path: string, docId: string, data: any) => {
+    if (!isAdmin) return;
     try {
-      await fetch("/api/data", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token: authToken,
-          data: currentData
-        })
-      });
+      await setDoc(doc(db, path, docId), data, { merge: true });
     } catch (err) {
-      console.error("Failed to sync to server:", err);
+      handleFirestoreError(err, OperationType.WRITE, `${path}/${docId}`);
     }
   };
 
-  const bundleData = () => ({
-    websiteName, userName, userRole, userBio, avatarUrl, projects, pageContents, themeSettings, categories
-  });
-
-  const handleLogin = async (password: string) => {
-    return { success: true };
-  };
-
-  const handleLogout = () => {
-    // No-op
-  };
-
-  // Save website name to storage
-  useEffect(() => {
-    localStorage.setItem("portfolio_website_name", websiteName);
-  }, [websiteName]);
-
-  // Save avatar to storage
-  useEffect(() => {
-    if (avatarUrl) {
-      set("portfolio_avatar", avatarUrl);
+  const handleGoogleLogin = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (err) {
+      console.error("Login failed:", err);
     }
-  }, [avatarUrl]);
+  };
 
-  // Save theme to storage
+  const handleLogoutAdmin = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error("Logout failed:", err);
+    }
+  };
+
+  // Effect to automatically persist changes to Firebase (Debounced optionally, but we'll try direct for now)
   useEffect(() => {
-    set("portfolio_theme", themeSettings);
-  }, [themeSettings]);
+    if (isAuthReady && isAdmin) {
+      saveToFirebase("settings", "config", {
+        websiteName, userName, userRole, userBio, avatarUrl, categories
+      });
+    }
+  }, [websiteName, userName, userRole, userBio, avatarUrl, categories, isAuthReady, isAdmin]);
 
-  // Save categories to storage
   useEffect(() => {
-    set("portfolio_categories", categories);
-  }, [categories]);
+    if (isAuthReady && isAdmin) {
+      saveToFirebase("settings", "theme", themeSettings);
+    }
+  }, [themeSettings, isAuthReady, isAdmin]);
 
-  // Save to storage
+  // Save Profile
   const saveProfile = async () => {
-    localStorage.setItem("portfolio_name", userName);
-    localStorage.setItem("portfolio_role", userRole);
-    localStorage.setItem("portfolio_bio", userBio);
     setIsEditingProfile(false);
-    await syncToServer({ ...bundleData(), userName, userRole, userBio });
+    if (isAdmin) {
+      await saveToFirebase("settings", "config", {
+        websiteName, userName, userRole, userBio, avatarUrl, categories
+      });
+    }
   };
 
   const addProject = async (newProjectData: { title: string; category: Category; tag: string; color: string; description: string; file?: File }) => {
@@ -982,10 +1046,14 @@ export default function App() {
       mediaItems,
     };
 
-    const updatedProjects = [...projects, newProject];
-    setProjects(updatedProjects);
-    await set("portfolio_projects", updatedProjects);
-    await syncToServer({ ...bundleData(), projects: updatedProjects });
+    setProjects(prev => [...prev, newProject]);
+    if (isAdmin) {
+      try {
+        await setDoc(doc(db, "projects", newProject.id), newProject);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `projects/${newProject.id}`);
+      }
+    }
     
     setIsUploading(false);
     setShowUploadModal(false);
@@ -993,31 +1061,36 @@ export default function App() {
 
   const updateProject = async (updatedProject: Project) => {
     if (!isAdmin) return;
-    const updatedProjects = projects.map(p => p.id === updatedProject.id ? updatedProject : p);
-    setProjects(updatedProjects);
-    await set("portfolio_projects", updatedProjects);
-    await syncToServer({ ...bundleData(), projects: updatedProjects });
+    setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
+    try {
+      await setDoc(doc(db, "projects", updatedProject.id), updatedProject);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `projects/${updatedProject.id}`);
+    }
   };
 
   const deleteProject = async (id: string) => {
     if (!isAdmin) return;
-    const updatedProjects = projects.filter(p => p.id !== id);
-    setProjects(updatedProjects);
-    await set("portfolio_projects", updatedProjects);
-    await syncToServer({ ...bundleData(), projects: updatedProjects });
+    setProjects(prev => prev.filter(p => p.id !== id));
+    try {
+      await deleteDoc(doc(db, "projects", id));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `projects/${id}`);
+    }
   };
 
   const updatePageContent = async (type: string, content: PageContent) => {
     if (!isAdmin) return;
-    const updatedPageContents = { ...pageContents, [type]: content };
-    setPageContents(updatedPageContents);
-    await set("portfolio_page_contents", updatedPageContents);
-    await syncToServer({ ...bundleData(), pageContents: updatedPageContents });
+    setPageContents(prev => ({ ...prev, [type]: content }));
+    try {
+      await setDoc(doc(db, "pages", type), content);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `pages/${type}`);
+    }
   };
 
   return (
     <ErrorBoundary>
-      <div style={{ position: 'fixed', top: 0, right: 0, background: '#0081FF', color: 'white', zIndex: 9999, fontSize: '10px', padding: '4px', fontWeight: 'bold' }}>V4 - ACTIVE</div>
       <Routes>
         <Route path="/" element={
           <PortfolioHome 
@@ -1043,7 +1116,8 @@ export default function App() {
             setShowSettingsModal={setShowSettingsModal}
             setAvatarUrl={setAvatarUrl}
             isAdmin={isAdmin}
-            setShowLoginModal={setIsLoginModalOpen}
+            handleGoogleLogin={handleGoogleLogin}
+            handleLogoutAdmin={handleLogoutAdmin}
           />
         } />
         <Route path="/project/:id" element={<ProjectDetail projects={projects} updateProject={updateProject} deleteProject={deleteProject} themeSettings={themeSettings} isAdmin={isAdmin} />} />
