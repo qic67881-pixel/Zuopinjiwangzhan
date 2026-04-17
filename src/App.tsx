@@ -310,28 +310,41 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
             initial={{ x: -20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
           >
-            {isEditing ? (
-              <div className="flex flex-col gap-4">
-                <input 
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  className="text-4xl md:text-6xl font-bold bg-transparent border-b border-border-custom outline-none focus:border-accent w-full pb-2"
-                />
-                <textarea 
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  className="text-text-dim text-lg leading-relaxed bg-transparent border border-border-custom p-4 rounded-xl outline-none focus:border-accent w-full h-48 resize-none"
-                />
-                <button onClick={handleSaveInfo} className="bg-accent text-white py-3 rounded-xl font-bold">保存文字信息</button>
-              </div>
-            ) : (
-              <>
-                <h1 className="text-4xl md:text-6xl font-bold mb-6">{project.title}</h1>
-                <p className="text-text-dim text-lg leading-relaxed whitespace-pre-line">
-                  {project.description || "该作品暂无详细描述。"}
-                </p>
-              </>
-            )}
+            <AnimatePresence mode="wait">
+              {isEditing ? (
+                <motion.div 
+                  key={`project-edit-${project.id}`}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="flex flex-col gap-4"
+                >
+                  <input 
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="text-4xl md:text-6xl font-bold bg-transparent border-b border-border-custom outline-none focus:border-accent w-full pb-2"
+                  />
+                  <textarea 
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    className="text-text-dim text-lg leading-relaxed bg-transparent border border-border-custom p-4 rounded-xl outline-none focus:border-accent w-full h-48 resize-none"
+                  />
+                  <button onClick={handleSaveInfo} className="bg-accent text-white py-3 rounded-xl font-bold">保存文字信息</button>
+                </motion.div>
+              ) : (
+                <motion.div 
+                  key={`project-view-${project.id}`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  <h1 className="text-4xl md:text-6xl font-bold mb-6">{project.title}</h1>
+                  <p className="text-text-dim text-lg leading-relaxed whitespace-pre-line">
+                    {project.description || "该作品暂无详细描述。"}
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
 
           <motion.div 
@@ -490,26 +503,39 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
 
       <div className="max-w-4xl mx-auto px-6 py-12 md:py-20">
         <div className="mb-16">
-          {isEditing ? (
-            <div className="flex flex-col gap-6">
-              <input 
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                className="text-4xl md:text-6xl font-bold bg-transparent border-b border-border-custom outline-none focus:border-accent w-full pb-2"
-              />
-              <textarea 
-                value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-                className="text-text-dim text-lg leading-relaxed bg-transparent border border-border-custom p-4 rounded-xl outline-none focus:border-accent w-full h-64 resize-none"
-              />
-              <button onClick={handleSave} className="bg-accent text-white py-3 rounded-xl font-bold">保存文字信息</button>
-            </div>
-          ) : (
-            <>
-              <h1 className="text-4xl md:text-6xl font-bold mb-8">{content.title}</h1>
-              <p className="text-text-dim text-lg leading-relaxed whitespace-pre-line">{content.content}</p>
-            </>
-          )}
+          <AnimatePresence mode="wait">
+            {isEditing ? (
+              <motion.div 
+                key={`${type}-edit-form`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="flex flex-col gap-6"
+              >
+                <input 
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="text-4xl md:text-6xl font-bold bg-transparent border-b border-border-custom outline-none focus:border-accent w-full pb-2"
+                />
+                <textarea 
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  className="text-text-dim text-lg leading-relaxed bg-transparent border border-border-custom p-4 rounded-xl outline-none focus:border-accent w-full h-64 resize-none"
+                />
+                <button onClick={handleSave} className="bg-accent text-white py-3 rounded-xl font-bold">保存文字信息</button>
+              </motion.div>
+            ) : (
+              <motion.div 
+                key={`${type}-view-content`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                <h1 className="text-4xl md:text-6xl font-bold mb-8">{content.title}</h1>
+                <p className="text-text-dim text-lg leading-relaxed whitespace-pre-line">{content.content}</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         <div className="flex flex-col gap-8">
