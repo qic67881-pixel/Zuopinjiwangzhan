@@ -1,7 +1,7 @@
 import { useState, useEffect, ChangeEvent, FormEvent, Component, ReactNode, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Github, Linkedin, Twitter, Mail, ExternalLink, ArrowRight, Edit2, Plus, X, Check, Trash2, ArrowLeft, Play, Maximize2, LogIn, LogOut, Cloud } from "lucide-react";
-import { Routes, Route, useNavigate, useParams, Link } from "react-router-dom";
+import { Routes, Route, useNavigate, useParams, Link, useLocation } from "react-router-dom";
 import { get, set } from "idb-keyval";
 import { db, auth } from "./firebase";
 import { 
@@ -280,6 +280,7 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
 
   return (
     <motion.div 
+      key={`project-detail-${project.id}`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -465,6 +466,7 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
 
   return (
     <motion.div 
+      key={`generic-page-${type}`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -578,7 +580,11 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
   };
 
   return (
-    <div 
+    <motion.div 
+      key="home-page"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
       className="min-h-screen flex flex-col transition-colors duration-500 selection:bg-accent selection:text-white relative"
     >
       <GlobalBackground settings={themeSettings} />
@@ -595,17 +601,17 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
           {websiteName}
         </Link>
         <div className="hidden md:flex gap-10">
-          <Link to="/" className="nav-link">作品 Works</Link>
-          <Link to="/about" className="nav-link">关于 About</Link>
-          <Link to="/archive" className="nav-link">归档 Archive</Link>
-          <Link to="/contact" className="nav-link">联系 Contact</Link>
+          <Link to="/" className="nav-link">WORKS</Link>
+          <Link to="/about" className="nav-link">ABOUT</Link>
+          <Link to="/archive" className="nav-link">ARCHIVE</Link>
+          <Link to="/contact" className="nav-link">CONTACT</Link>
           {isAdmin ? (
             <div className="flex items-center gap-4">
               <button 
                 onClick={() => setShowSettingsModal(true)}
                 className="bg-accent/10 text-accent hover:bg-accent hover:text-white p-2 px-3 rounded-xl transition-all flex items-center gap-2 text-xs font-bold"
               >
-                <Edit2 size={14} /> 设置 Settings
+                <Edit2 size={14} /> SETTINGS
               </button>
               <button 
                 onClick={handleLogoutAdmin}
@@ -840,7 +846,7 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
           </div>
         </main>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -1118,42 +1124,46 @@ export default function App() {
     }
   };
 
+  const location = useLocation();
+
   return (
     <ErrorBoundary>
-      <Routes>
-        <Route path="/" element={
-          <PortfolioHome 
-            websiteName={websiteName}
-            userName={userName}
-            userRole={userRole}
-            userBio={userBio}
-            projects={projects}
-            activeCategory={activeCategory}
-            setActiveCategory={setActiveCategory}
-            categories={categories}
-            setCategories={setCategories}
-            isEditingProfile={isEditingProfile}
-            setIsEditingProfile={setIsEditingProfile}
-            setUserName={setUserName}
-            setUserRole={setUserRole}
-            setUserBio={setUserBio}
-            saveProfile={saveProfile}
-            setShowUploadModal={setShowUploadModal}
-            deleteProject={deleteProject}
-            avatarUrl={avatarUrl}
-            themeSettings={themeSettings}
-            setShowSettingsModal={setShowSettingsModal}
-            setAvatarUrl={setAvatarUrl}
-            isAdmin={isAdmin}
-            handleLoginClick={() => setShowLoginModal(true)}
-            handleLogoutAdmin={handleLogoutAdmin}
-          />
-        } />
-        <Route path="/project/:id" element={<ProjectDetail projects={projects} updateProject={updateProject} deleteProject={deleteProject} themeSettings={themeSettings} isAdmin={isAdmin} />} />
-        <Route path="/about" element={<GenericPage type="about" content={pageContents.about} updateContent={updatePageContent} themeSettings={themeSettings} isAdmin={isAdmin} />} />
-        <Route path="/archive" element={<GenericPage type="archive" content={pageContents.archive} updateContent={updatePageContent} themeSettings={themeSettings} isAdmin={isAdmin} />} />
-        <Route path="/contact" element={<GenericPage type="contact" content={pageContents.contact} updateContent={updatePageContent} themeSettings={themeSettings} isAdmin={isAdmin} />} />
-      </Routes>
+      <AnimatePresence mode="wait">
+        <Routes location={location}>
+          <Route path="/" element={
+            <PortfolioHome 
+              websiteName={websiteName}
+              userName={userName}
+              userRole={userRole}
+              userBio={userBio}
+              projects={projects}
+              activeCategory={activeCategory}
+              setActiveCategory={setActiveCategory}
+              categories={categories}
+              setCategories={setCategories}
+              isEditingProfile={isEditingProfile}
+              setIsEditingProfile={setIsEditingProfile}
+              setUserName={setUserName}
+              setUserRole={setUserRole}
+              setUserBio={setUserBio}
+              saveProfile={saveProfile}
+              setShowUploadModal={setShowUploadModal}
+              deleteProject={deleteProject}
+              avatarUrl={avatarUrl}
+              themeSettings={themeSettings}
+              setShowSettingsModal={setShowSettingsModal}
+              setAvatarUrl={setAvatarUrl}
+              isAdmin={isAdmin}
+              handleLoginClick={() => setShowLoginModal(true)}
+              handleLogoutAdmin={handleLogoutAdmin}
+            />
+          } />
+          <Route path="/project/:id" element={<ProjectDetail projects={projects} updateProject={updateProject} deleteProject={deleteProject} themeSettings={themeSettings} isAdmin={isAdmin} />} />
+          <Route path="/about" element={<GenericPage type="about" content={pageContents.about} updateContent={updatePageContent} themeSettings={themeSettings} isAdmin={isAdmin} />} />
+          <Route path="/archive" element={<GenericPage type="archive" content={pageContents.archive} updateContent={updatePageContent} themeSettings={themeSettings} isAdmin={isAdmin} />} />
+          <Route path="/contact" element={<GenericPage type="contact" content={pageContents.contact} updateContent={updatePageContent} themeSettings={themeSettings} isAdmin={isAdmin} />} />
+        </Routes>
+      </AnimatePresence>
 
       {/* Login Modal */}
       <AnimatePresence mode="wait">
