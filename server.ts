@@ -13,7 +13,7 @@ const DATA_FILE = path.join(__dirname, "data.json");
 const AUTH_TOKEN = "public-access";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = parseInt(process.env.PORT || "3000", 10);
 
 app.use(express.json({ limit: "50mb" }));
 

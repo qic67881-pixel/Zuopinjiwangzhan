@@ -1,4 +1,4 @@
-import { useState, useEffect, ChangeEvent } from "react";
+import { useState, useEffect, ChangeEvent, Component, ReactNode } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Github, Linkedin, Twitter, Mail, ExternalLink, ArrowRight, Edit2, Plus, X, Check, Trash2, ArrowLeft, Play, Maximize2 } from "lucide-react";
 import { Routes, Route, useNavigate, useParams, Link } from "react-router-dom";
@@ -754,6 +754,57 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
   );
 }
 
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: "40px", color: "white", background: "#0a0a0a", minHeight: "100vh", fontFamily: "sans-serif", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+          <h1 style={{ color: "#0081FF", fontSize: "40px", marginBottom: "20px" }}>V4 - 修复模式</h1>
+          <p style={{ maxWidth: "600px", lineHeight: "1.6", color: "#888" }}>
+            由于数据或环境冲突，页面加载遇到了一点小波折。
+          </p>
+          <pre style={{ background: "#222", padding: "10px", borderRadius: "5px", color: "#ff4444", marginTop: "20px", fontSize: "12px", textAlign: "left" }}>
+            {this.state.error?.toString()}
+          </pre>
+          <button 
+            onClick={() => {
+              localStorage.clear();
+              window.location.reload();
+            }}
+            style={{ padding: "12px 30px", background: "#0081FF", border: "none", color: "white", borderRadius: "8px", marginTop: "30px", cursor: "pointer", fontWeight: "bold" }}
+          >
+            清除缓存并重试
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 export default function App() {
   // State for categories
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
@@ -965,7 +1016,8 @@ export default function App() {
   };
 
   return (
-    <>
+    <ErrorBoundary>
+      <div style={{ position: 'fixed', top: 0, right: 0, background: '#0081FF', color: 'white', zIndex: 9999, fontSize: '10px', padding: '4px', fontWeight: 'bold' }}>V4 - ACTIVE</div>
       <Routes>
         <Route path="/" element={
           <PortfolioHome 
@@ -1483,6 +1535,6 @@ export default function App() {
           </div>
         </div>
       </footer>
-    </>
+    </ErrorBoundary>
   );
 }
