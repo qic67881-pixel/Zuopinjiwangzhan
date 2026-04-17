@@ -1,4 +1,4 @@
-import { useState, useEffect, ChangeEvent, Component, ReactNode, useCallback } from "react";
+import { useState, useEffect, ChangeEvent, FormEvent, Component, ReactNode, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Github, Linkedin, Twitter, Mail, ExternalLink, ArrowRight, Edit2, Plus, X, Check, Trash2, ArrowLeft, Play, Maximize2, LogIn, LogOut, Cloud } from "lucide-react";
 import { Routes, Route, useNavigate, useParams, Link } from "react-router-dom";
@@ -17,8 +17,7 @@ import {
 } from "firebase/firestore";
 import { 
   onAuthStateChanged, 
-  signInWithPopup, 
-  GoogleAuthProvider, 
+  signInWithEmailAndPassword,
   signOut,
   User 
 } from "firebase/auth";
@@ -901,7 +900,12 @@ export default function App() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   
   // State for user info
   const [websiteName, setWebsiteName] = useState("LIAM.C");
@@ -978,28 +982,27 @@ export default function App() {
     }
   };
 
-  const handleGoogleLogin = async () => {
-    // Show a hint that login works best in a new tab
-    const isIframe = window.self !== window.top;
-    if (isIframe) {
-      console.log("Detecting iframe environment. Google login popup works best when opened in a new window.");
-    }
-
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
+  const handleEmailLogin = async (e: FormEvent) => {
+    e.preventDefault();
+    setLoginError("");
+    setIsLoggingIn(true);
     
     try {
-      const result = await signInWithPopup(auth, provider);
-      console.log("Login success for:", result.user.email);
+      await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
+      setShowLoginModal(false);
+      setLoginEmail("");
+      setLoginPassword("");
     } catch (err: any) {
-      console.error("Login Error Details:", err);
-      if (err.code === 'auth/popup-blocked') {
-        alert("登录窗口被浏览器拦截，请点击地址栏右侧的拦截图标允许弹出窗口，或点击页面右上角图标‘在新标签页打开’重试。");
-      } else if (err.code === 'auth/unauthorized-domain') {
-        alert("当前域名未被授权，请在 Firebase 控制台的 Auth 设置中添加当前域名。");
+      console.error("Login Error:", err);
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        setLoginError("邮箱或密码错误，请检查。");
+      } else if (err.code === 'auth/too-many-requests') {
+        setLoginError("尝试次数过多，请稍后再试。");
       } else {
-        alert(`登录遇到问题: ${err.message}\n建议：点击预览框右上角图标，“在新标签页打开”重试。`);
+        setLoginError(`登录失败: ${err.message}`);
       }
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -1140,7 +1143,7 @@ export default function App() {
             setShowSettingsModal={setShowSettingsModal}
             setAvatarUrl={setAvatarUrl}
             isAdmin={isAdmin}
-            handleGoogleLogin={handleGoogleLogin}
+            handleLoginClick={() => setShowLoginModal(true)}
             handleLogoutAdmin={handleLogoutAdmin}
           />
         } />
@@ -1152,7 +1155,85 @@ export default function App() {
 
       {/* Login Modal */}
       <AnimatePresence>
-        {/* Login modal removed */}
+        {showLoginModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !isLoggingIn && setShowLoginModal(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-md bg-[#111] border border-white/10 rounded-2xl p-8 shadow-2xl overflow-hidden"
+            >
+              <div className="flex justify-between items-center mb-8">
+                <div>
+                  <h2 className="text-2xl font-bold tracking-tight text-white">后台管理入口</h2>
+                  <p className="text-[10px] text-text-dim mt-1 uppercase tracking-widest font-mono">ADMIN AUTHORIZATION</p>
+                </div>
+                <button 
+                  onClick={() => setShowLoginModal(false)} 
+                  disabled={isLoggingIn}
+                  className="text-text-dim hover:text-white transition-all hover:rotate-90"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleEmailLogin} className="flex flex-col gap-6">
+                <div className="flex flex-col gap-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-text-dim">管理邮箱 Admin Email</label>
+                  <input 
+                    type="email" 
+                    required
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="example@gmail.com"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-accent transition-all text-white"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-text-dim">登录密码 Password</label>
+                  <input 
+                    type="password" 
+                    required
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-accent transition-all text-white"
+                  />
+                </div>
+
+                {loginError && (
+                  <div className="bg-red-500/10 border border-red-500/20 text-red-500 text-[11px] py-3 px-4 rounded-xl flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-red-500" />
+                    {loginError}
+                  </div>
+                )}
+
+                <button 
+                  type="submit"
+                  disabled={isLoggingIn}
+                  className="w-full py-4 bg-accent hover:bg-accent/90 text-white rounded-xl font-bold transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-accent/20 disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-2"
+                >
+                  {isLoggingIn ? "验证中..." : "验证并进入管理模式"}
+                </button>
+              </form>
+
+              <div className="mt-8 pt-6 border-t border-white/5 text-center">
+                <p className="text-[10px] text-text-dim leading-relaxed">
+                  请注意：仅限管理员账号访问。<br/>
+                  如果您忘记了密码，请在 Firebase 控制台重置。
+                </p>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </AnimatePresence>
 
 
