@@ -854,7 +854,7 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends (Component as any) {
   state: ErrorBoundaryState = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error) {
@@ -862,7 +862,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   componentDidCatch(error: Error, errorInfo: any) {
-    console.error("ErrorBoundary caught an error", error, errorInfo);
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
   }
 
   render() {
@@ -873,8 +873,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
           <p style={{ maxWidth: "600px", lineHeight: "1.6", color: "#888" }}>
             由于数据或环境冲突，页面加载遇到了一点小波折。
           </p>
-          <pre style={{ background: "#222", padding: "10px", borderRadius: "5px", color: "#ff4444", marginTop: "20px", fontSize: "12px", textAlign: "left" }}>
-            {this.state.error?.toString()}
+          <pre style={{ background: "#222", padding: "10px", borderRadius: "5px", color: "#ff4444", marginTop: "20px", fontSize: "12px", textAlign: "left", whiteSpace: "pre-wrap", overflowX: "auto", maxWidth: "90vw" }}>
+            {this.state.error?.message || this.state.error?.toString()}
           </pre>
           <button 
             onClick={() => {
@@ -889,7 +889,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
-    return (this as any).props.children;
+    return this.props.children;
   }
 }
 
@@ -979,11 +979,27 @@ export default function App() {
   };
 
   const handleGoogleLogin = async () => {
+    // Show a hint that login works best in a new tab
+    const isIframe = window.self !== window.top;
+    if (isIframe) {
+      console.log("Detecting iframe environment. Google login popup works best when opened in a new window.");
+    }
+
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    
     try {
-      await signInWithPopup(auth, provider);
-    } catch (err) {
-      console.error("Login failed:", err);
+      const result = await signInWithPopup(auth, provider);
+      console.log("Login success for:", result.user.email);
+    } catch (err: any) {
+      console.error("Login Error Details:", err);
+      if (err.code === 'auth/popup-blocked') {
+        alert("登录窗口被浏览器拦截，请点击地址栏右侧的拦截图标允许弹出窗口，或点击页面右上角图标‘在新标签页打开’重试。");
+      } else if (err.code === 'auth/unauthorized-domain') {
+        alert("当前域名未被授权，请在 Firebase 控制台的 Auth 设置中添加当前域名。");
+      } else {
+        alert(`登录遇到问题: ${err.message}\n建议：点击预览框右上角图标，“在新标签页打开”重试。`);
+      }
     }
   };
 
@@ -995,19 +1011,27 @@ export default function App() {
     }
   };
 
-  // Effect to automatically persist changes to Firebase (Debounced optionally, but we'll try direct for now)
+  // Effect to automatically persist changes to Firebase (Debounced to avoid loops)
   useEffect(() => {
-    if (isAuthReady && isAdmin) {
-      saveToFirebase("settings", "config", {
-        websiteName, userName, userRole, userBio, avatarUrl, categories
-      });
-    }
+    const timer = setTimeout(() => {
+      if (isAuthReady && isAdmin) {
+        saveToFirebase("settings", "config", {
+          websiteName, userName, userRole, userBio, avatarUrl, categories
+        });
+      }
+    }, 2000); // 2-second debounce
+    
+    return () => clearTimeout(timer);
   }, [websiteName, userName, userRole, userBio, avatarUrl, categories, isAuthReady, isAdmin]);
 
   useEffect(() => {
-    if (isAuthReady && isAdmin) {
-      saveToFirebase("settings", "theme", themeSettings);
-    }
+    const timer = setTimeout(() => {
+      if (isAuthReady && isAdmin) {
+        saveToFirebase("settings", "theme", themeSettings);
+      }
+    }, 2000); // 2-second debounce
+
+    return () => clearTimeout(timer);
   }, [themeSettings, isAuthReady, isAdmin]);
 
   // Save Profile
