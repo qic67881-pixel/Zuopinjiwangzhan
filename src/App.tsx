@@ -1046,17 +1046,15 @@ export default function App() {
     });
   };
 
-  const addProject = async (newProjectData: { title: string; category: Category; tag: string; color: string; description: string; file?: File }) => {
+  const addProject = async (newProjectData: { title: string; category: Category; tag: string; color: string; description: string; file?: File; externalUrl?: string }) => {
     if (!isAdmin) return;
     setIsUploading(true);
     const mediaItems: MediaItem[] = [];
 
-    if (newProjectData.file) {
-      if (newProjectData.file.size > 1.5 * 1024 * 1024) {
-        alert("文件太大！Firebase 数据库单个作品限制为 1.5MB 以内（这是为了保证您网站的加载速度）。建议：上传更小的视频，或将其上传到第三方平台后使用外部链接。");
-        setIsUploading(false);
-        return;
-      }
+    if (newProjectData.externalUrl) {
+      const type = newProjectData.externalUrl.match(/\.(mp4|webm|ogg)$/i) ? "video" : "image";
+      mediaItems.push({ id: Date.now().toString(), url: newProjectData.externalUrl, type });
+    } else if (newProjectData.file) {
       const file = newProjectData.file;
       const type = file.type.startsWith("video") ? "video" : "image";
       const url = await new Promise<string>((resolve) => {
@@ -1282,6 +1280,7 @@ export default function App() {
                   description: formData.get("description") as string,
                   color: formData.get("color") as string,
                   file: file,
+                  externalUrl: formData.get("externalUrl") as string,
                 });
               }} className="flex flex-col gap-6">
                 <div className="flex flex-col gap-2">
@@ -1309,14 +1308,28 @@ export default function App() {
                   <textarea name="description" className="bg-background border border-border-custom p-3 rounded-lg outline-none focus:border-accent h-24 resize-none" placeholder="详细介绍您的创作思路..." />
                 </div>
 
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs uppercase tracking-widest text-text-dim">上传媒体 (图片或视频)</label>
-                  <input 
-                    type="file" 
-                    accept="image/*,video/*" 
-                    className="bg-background border border-border-custom p-3 rounded-lg outline-none focus:border-accent file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-accent file:text-white hover:file:bg-accent/80" 
-                  />
-                  <p className="text-[10px] text-text-dim italic">现在已支持大文件上传，无需担心尺寸限制。</p>
+                <div className="flex flex-col gap-4 p-4 bg-white/5 rounded-xl border border-dashed border-border-custom">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs uppercase tracking-widest text-text-dim">媒体文件 (图片或视频)</label>
+                    <input 
+                      type="file" 
+                      accept="image/*,video/*" 
+                      className="bg-background border border-border-custom p-3 rounded-lg outline-none focus:border-accent file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-accent file:text-white hover:file:bg-accent/80" 
+                    />
+                    <p className="text-[10px] text-text-dim italic">注：直接上传的文件体积过大可能导致保存失败。</p>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <div className="h-px flex-1 bg-border-custom" />
+                    <span className="text-[10px] text-text-dim uppercase">或者 OR</span>
+                    <div className="h-px flex-1 bg-border-custom" />
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs uppercase tracking-widest text-text-dim">媒体 URL 链接 (支持大视频)</label>
+                    <input name="externalUrl" className="bg-background border border-border-custom p-3 rounded-lg outline-none focus:border-accent text-sm" placeholder="https://example.com/video.mp4" />
+                    <p className="text-[10px] text-text-dim">推荐将大视频上传到图床或云存储后贴入链接，速度极快且无大小限制。</p>
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-2">
