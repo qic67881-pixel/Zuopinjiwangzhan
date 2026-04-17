@@ -1,4 +1,4 @@
-import { useState, useEffect, ChangeEvent, Component, ReactNode } from "react";
+import { useState, useEffect, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Github, Linkedin, Twitter, Mail, ExternalLink, ArrowRight, Edit2, Plus, X, Check, Trash2, ArrowLeft, Play, Maximize2 } from "lucide-react";
 import { Routes, Route, useNavigate, useParams, Link } from "react-router-dom";
@@ -754,49 +754,6 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
   );
 }
 
-interface ErrorBoundaryProps {
-  children: ReactNode;
-}
-
-interface ErrorBoundaryState {
-  hasError: boolean;
-  error: Error | null;
-}
-
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: any) {
-    console.error("ErrorBoundary caught an error", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{ padding: "20px", color: "white", background: "#1a1a1a", minHeight: "100vh" }}>
-          <h1>Oops! Something went wrong.</h1>
-          <p>{this.state.error?.message}</p>
-          <button 
-            onClick={() => window.location.reload()}
-            style={{ padding: "10px 20px", background: "#0081FF", border: "none", color: "white", borderRadius: "5px" }}
-          >
-            Reload Page
-          </button>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
-
 export default function App() {
   // State for categories
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
@@ -1008,8 +965,7 @@ export default function App() {
   };
 
   return (
-    <ErrorBoundary>
-      <div style={{ position: 'fixed', top: 0, left: 0, background: 'red', color: 'white', zIndex: 9999, fontSize: '10px', padding: '2px' }}>V3</div>
+    <>
       <Routes>
         <Route path="/" element={
           <PortfolioHome 
@@ -1520,14 +1476,6 @@ export default function App() {
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <span>LOCATED IN SHANGHAI, CHINA</span>
-            {isAdmin && (
-              <button 
-                onClick={handleLogout}
-                className="ml-4 px-2 py-1 bg-red-500/10 text-red-500 rounded hover:bg-red-500 hover:text-white transition-all uppercase"
-              >
-                Logout
-              </button>
-            )}
           </div>
           <div className="flex items-center gap-2 text-text-main cursor-pointer hover:text-accent transition-colors">
             <span>RESUME.PDF</span>
@@ -1535,6 +1483,6 @@ export default function App() {
           </div>
         </div>
       </footer>
-    </ErrorBoundary>
+    </>
   );
 }

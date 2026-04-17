@@ -13,7 +13,7 @@ const DATA_FILE = path.join(__dirname, "data.json");
 const AUTH_TOKEN = "public-access";
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: "50mb" }));
 
@@ -54,19 +54,15 @@ app.post("/api/data", async (req, res) => {
 });
 
 // Setup Rendering
-const isProd = process.env.NODE_ENV === "production" || process.env.VERCEL;
+const distPath = path.join(process.cwd(), "dist");
 
-if (isProd) {
-  console.log("Starting in PRODUCTION mode");
-  const distPath = path.join(process.cwd(), "dist");
+if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
   app.use(express.static(distPath));
   app.get("*", (req, res) => {
     if (req.path.startsWith("/api/")) return res.status(404).json({ error: "API not found" });
-    const indexPath = path.join(distPath, "index.html");
-    res.sendFile(indexPath);
+    res.sendFile(path.join(distPath, "index.html"));
   });
 } else {
-  console.log("Starting in DEVELOPMENT mode (Vite)");
   // Use Vite in development (AI Studio)
   try {
     const { createServer: createViteServer } = await import("vite");
@@ -76,9 +72,6 @@ if (isProd) {
     });
     app.use(vite.middlewares);
   } catch (e) {
-    console.error("CRITICAL: Failed to start Vite dev server:", e);
-    // Emergency fallback to dist
-    const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
