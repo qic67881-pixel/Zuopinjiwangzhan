@@ -809,13 +809,6 @@ export default function App() {
       if (savedTheme) setThemeSettings(savedTheme);
       if (savedCategories) setCategories(savedCategories);
 
-      // Check for saved token
-      const savedToken = localStorage.getItem("admin_token");
-      if (savedToken) {
-        setAuthToken(savedToken);
-        setIsAdmin(true);
-      }
-
       // 2. Fetch from server to sync
       try {
         const response = await fetch("/api/data");
@@ -861,45 +854,11 @@ export default function App() {
   });
 
   const handleLogin = async (password: string) => {
-    setIsUploading(true); // Reuse uploading state as a generic loading state
-    try {
-      console.log("Sending login request to /api/login...");
-      const response = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password, _t: Date.now() })
-      });
-      
-      console.log("Login response status:", response.status);
-      const result = await response.json();
-      
-      if (result.success) {
-        console.log("Login successful! Token received.");
-        setAuthToken(result.token);
-        setIsAdmin(true);
-        localStorage.setItem("admin_token", result.token);
-        
-        // Modal closure
-        setIsLoginModalOpen(false);
-        setIsUploading(false);
-        
-        alert("登录成功！您已进入管理员模式。");
-        return { success: true };
-      }
-      
-      setIsUploading(false);
-      return { success: false, message: result.message || "密码错误" };
-    } catch (err) {
-      console.error("Critical Login error:", err);
-      setIsUploading(false);
-      return { success: false, message: "无法连接到服务器，请检查网络。" };
-    }
+    return { success: true };
   };
 
   const handleLogout = () => {
-    setIsAdmin(false);
-    setAuthToken(null);
-    localStorage.removeItem("admin_token");
+    // No-op
   };
 
   // Save website name to storage
