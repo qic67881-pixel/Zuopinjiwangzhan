@@ -538,14 +538,6 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
           )}
         </div>
         <div className="flex items-center gap-4">
-          {!isAdmin && (
-            <button 
-              onClick={() => setShowLoginModal(true)}
-              className="text-[10px] uppercase tracking-widest text-text-dim hover:text-accent transition-all"
-            >
-              ADMIN
-            </button>
-          )}
           <button className="md:hidden text-text-main">
             <Mail size={20} />
           </button>
@@ -789,9 +781,9 @@ export default function App() {
   const [themeSettings, setThemeSettings] = useState<ThemeSettings>(INITIAL_THEME);
 
   // Admin Auth State
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(true);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [authToken, setAuthToken] = useState<string | null>("public-access");
 
   // Load from storage and server
   useEffect(() => {
@@ -1038,51 +1030,7 @@ export default function App() {
 
       {/* Login Modal */}
       <AnimatePresence>
-        {isLoginModalOpen && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsLoginModalOpen(false)}
-              className="absolute inset-0 bg-background/90 backdrop-blur-md"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-sm bg-surface border border-border-custom rounded-2xl p-8 shadow-2xl"
-            >
-              <h2 className="text-2xl font-bold mb-6 text-center">管理员登录 ADMIN</h2>
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                const passwordInput = e.currentTarget.elements.namedItem("password") as HTMLInputElement;
-                const password = passwordInput.value.trim();
-                const result = await handleLogin(password);
-                if (!result.success) {
-                  alert(result.message);
-                  passwordInput.value = "";
-                  passwordInput.focus();
-                }
-              }} className="flex flex-col gap-6">
-                <input 
-                  type="password" 
-                  name="password" 
-                  placeholder="请输入管理密码..." 
-                  autoFocus
-                  className="bg-background border border-border-custom p-4 rounded-xl outline-none focus:border-accent text-center text-lg" 
-                />
-                <button 
-                  type="submit" 
-                  disabled={isUploading}
-                  className="bg-accent text-white py-4 rounded-xl font-bold hover:bg-accent/80 transition-all flex items-center justify-center gap-2"
-                >
-                  {isUploading ? "正在验证..." : "确认登录"}
-                </button>
-              </form>
-            </motion.div>
-          </div>
-        )}
+        {/* Login modal removed */}
       </AnimatePresence>
 
 

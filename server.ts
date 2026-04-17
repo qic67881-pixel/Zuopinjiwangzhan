@@ -13,7 +13,7 @@ const DATA_FILE = path.join(__dirname, "data.json");
 const FALLBACK_PASSWORD = "qicheng1314.";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: "50mb" }));
 
@@ -37,25 +37,11 @@ const writeData = async (data: any) => {
 };
 
 // API Routes
-const AUTH_TOKEN = "authenticated-session-token";
+const AUTH_TOKEN = "public-access";
 
 app.post("/api/login", (req, res) => {
-  try {
-    const { password } = req.body;
-    const inputPassword = ((password as string) || "").trim();
-    const targetPassword = ((process.env.ADMIN_PASSWORD as string) || FALLBACK_PASSWORD).trim();
-
-    console.log(`[AUTH] Login Attempt - Received: "${inputPassword}", Expected: "${targetPassword}"`);
-
-    if (inputPassword === targetPassword) {
-      return res.json({ success: true, token: AUTH_TOKEN });
-    } else {
-      return res.status(401).json({ success: false, message: "密码校验失败，请重试" });
-    }
-  } catch (err) {
-    console.error("[AUTH] Server Error:", err);
-    return res.status(500).json({ success: false, message: "服务器内部错误" });
-  }
+  // Legacy login endpoint - now always succeeds
+  return res.json({ success: true, token: AUTH_TOKEN });
 });
 
 app.get("/api/data", async (req, res) => {
@@ -69,7 +55,8 @@ app.get("/api/data", async (req, res) => {
 
 app.post("/api/data", async (req, res) => {
   const { data, token } = req.body;
-  if (token !== AUTH_TOKEN) {
+  // Accept the public token for convenience
+  if (token !== AUTH_TOKEN && token !== "authenticated-session-token") {
     return res.status(403).json({ success: false, message: "Unauthorized" });
   }
   await writeData(data);
