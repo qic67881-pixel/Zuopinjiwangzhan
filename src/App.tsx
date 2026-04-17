@@ -538,14 +538,6 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
           )}
         </div>
         <div className="flex items-center gap-4">
-          {!isAdmin && (
-            <button 
-              onClick={() => setShowLoginModal(true)}
-              className="text-[10px] uppercase tracking-widest text-text-dim hover:text-accent transition-all"
-            >
-              ADMIN
-            </button>
-          )}
           <button className="md:hidden text-text-main">
             <Mail size={20} />
           </button>
@@ -789,9 +781,8 @@ export default function App() {
   const [themeSettings, setThemeSettings] = useState<ThemeSettings>(INITIAL_THEME);
 
   // Admin Auth State
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(true);
+  const [authToken, setAuthToken] = useState<string | null>("public-editing-enabled");
 
   // Load from storage and server
   useEffect(() => {
@@ -816,13 +807,6 @@ export default function App() {
       if (savedPageContents) setPageContents(savedPageContents);
       if (savedTheme) setThemeSettings(savedTheme);
       if (savedCategories) setCategories(savedCategories);
-
-      // Check for saved token
-      const savedToken = localStorage.getItem("admin_token");
-      if (savedToken) {
-        setAuthToken(savedToken);
-        setIsAdmin(true);
-      }
 
       // 2. Fetch from server to sync
       try {
@@ -849,13 +833,11 @@ export default function App() {
 
   // Sync to server helper
   const syncToServer = async (currentData: any) => {
-    if (!isAdmin || !authToken) return;
     try {
       await fetch("/api/data", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          token: authToken,
           data: currentData
         })
       });
@@ -867,34 +849,6 @@ export default function App() {
   const bundleData = () => ({
     websiteName, userName, userRole, userBio, avatarUrl, projects, pageContents, themeSettings, categories
   });
-
-  const handleLogin = async (password: string) => {
-    try {
-      const response = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password })
-      });
-      const result = await response.json();
-      if (result.success) {
-        setAuthToken(result.token);
-        setIsAdmin(true);
-        localStorage.setItem("admin_token", result.token);
-        setIsLoginModalOpen(false);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      console.error("Login failed:", err);
-      return false;
-    }
-  };
-
-  const handleLogout = () => {
-    setIsAdmin(false);
-    setAuthToken(null);
-    localStorage.removeItem("admin_token");
-  };
 
   // Save website name to storage
   useEffect(() => {
@@ -1012,8 +966,7 @@ export default function App() {
             themeSettings={themeSettings}
             setShowSettingsModal={setShowSettingsModal}
             setAvatarUrl={setAvatarUrl}
-            isAdmin={isAdmin}
-            setShowLoginModal={setIsLoginModalOpen}
+            isAdmin={true}
           />
         } />
         <Route path="/project/:id" element={<ProjectDetail projects={projects} updateProject={updateProject} deleteProject={deleteProject} themeSettings={themeSettings} isAdmin={isAdmin} />} />
@@ -1022,47 +975,6 @@ export default function App() {
         <Route path="/contact" element={<GenericPage type="contact" content={pageContents.contact} updateContent={updatePageContent} themeSettings={themeSettings} isAdmin={isAdmin} />} />
       </Routes>
 
-      {/* Login Modal */}
-      <AnimatePresence>
-        {isLoginModalOpen && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsLoginModalOpen(false)}
-              className="absolute inset-0 bg-background/90 backdrop-blur-md"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-sm bg-surface border border-border-custom rounded-2xl p-8 shadow-2xl"
-            >
-              <h2 className="text-2xl font-bold mb-6 text-center">管理员登录 ADMIN</h2>
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                const password = (e.currentTarget.elements.namedItem("password") as HTMLInputElement).value;
-                const success = await handleLogin(password);
-                if (!success) {
-                  alert("密码错误 Password Incorrect");
-                }
-              }} className="flex flex-col gap-6">
-                <input 
-                  type="password" 
-                  name="password" 
-                  placeholder="请输入管理密码..." 
-                  autoFocus
-                  className="bg-background border border-border-custom p-4 rounded-xl outline-none focus:border-accent text-center text-lg" 
-                />
-                <button type="submit" className="bg-accent text-white py-4 rounded-xl font-bold hover:bg-accent/80 transition-all">
-                  确认登录
-                </button>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* Upload Modal */}
       <AnimatePresence>
@@ -1534,14 +1446,6 @@ export default function App() {
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <span>LOCATED IN SHANGHAI, CHINA</span>
-            {isAdmin && (
-              <button 
-                onClick={handleLogout}
-                className="ml-4 px-2 py-1 bg-red-500/10 text-red-500 rounded hover:bg-red-500 hover:text-white transition-all uppercase"
-              >
-                Logout
-              </button>
-            )}
           </div>
           <div className="flex items-center gap-2 text-text-main cursor-pointer hover:text-accent transition-colors">
             <span>RESUME.PDF</span>

@@ -35,25 +35,13 @@ async function startServer() {
   };
 
   // API Routes
-  app.post("/api/login", (req, res) => {
-    const { password } = req.body;
-    if (password === ADMIN_PASSWORD) {
-      res.json({ success: true, token: "authenticated-session-token" });
-    } else {
-      res.status(401).json({ success: false, message: "Invalid password" });
-    }
-  });
-
   app.get("/api/data", async (req, res) => {
     const data = await readData();
     res.json(data || {});
   });
 
   app.post("/api/data", async (req, res) => {
-    const { token, data } = req.body;
-    if (token !== "authenticated-session-token") {
-      return res.status(403).json({ success: false, message: "Unauthorized" });
-    }
+    const { data } = req.body;
     await writeData(data);
     res.json({ success: true });
   });
@@ -75,7 +63,6 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`Admin password is set to: ${ADMIN_PASSWORD === "admin123" ? "admin123 (Default)" : "*******"}`);
   });
 }
 
