@@ -15,45 +15,58 @@ let db: admin.firestore.Firestore | null = null;
 
 try {
   const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
-  const configRaw = await fs.readFile(path.join(__dirname, "firebase-applet-config.json"), "utf-8");
-  const config = JSON.parse(configRaw);
+  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+  
+  let config: any = {};
+  try {
+    const configRaw = await fs.readFile(configPath, "utf-8");
+    config = JSON.parse(configRaw);
+  } catch (e) {
+    console.warn("Could not read firebase-applet-config.json, using environment variables.");
+    config = {
+      projectId: process.env.VITE_FIREBASE_PROJECT_ID,
+      firestoreDatabaseId: process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID
+    };
+  }
 
-  if (serviceAccount) {
+  if (serviceAccount && config.projectId) {
     let sa;
     try {
       sa = JSON.parse(serviceAccount);
     } catch {
-      // If it's not JSON, maybe it's base64
       sa = JSON.parse(Buffer.from(serviceAccount, 'base64').toString());
     }
     
-    admin.initializeApp({
-      credential: admin.credential.cert(sa),
-      projectId: config.projectId,
-    });
-  } else if (process.env.VERCEL) {
-    // On Vercel, we might use default credentials if configured in the environment
-    admin.initializeApp({
-      projectId: config.projectId,
-    });
-  } else {
-    // Local fallback for AI Studio / local dev
-    // We try to use application default credentials or just mock it if not available
-    try {
+    // Check if any apps already exist to prevent re-initialization error
+    if (admin.apps.length === 0) {
       admin.initializeApp({
+        credential: admin.credential.cert(sa),
         projectId: config.projectId,
       });
-    } catch (e) {
-      console.warn("Firebase Admin failed to initialize. Falling back to local data.json if available.");
+    }
+  } else if (process.env.VERCEL) {
+    if (admin.apps.length === 0) {
+      admin.initializeApp({
+        projectId: config.projectId || process.env.VITE_FIREBASE_PROJECT_ID,
+      });
+    }
+  } else {
+    // Local fallback
+    if (admin.apps.length === 0) {
+      try {
+        admin.initializeApp();
+      } catch (e) {
+        console.warn("Firebase Admin fallback failed.");
+      }
     }
   }
   
   if (admin.apps.length > 0) {
     db = admin.firestore();
-    // Support custom database ID from config if using Firestore Enterprise
-    if (config.firestoreDatabaseId) {
-      // @ts-ignore - The types might be slightly behind the experimental/latest SDK features for named databases
-      db = admin.firestore(config.firestoreDatabaseId);
+    const dbId = config.firestoreDatabaseId || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
+    if (dbId) {
+      // @ts-ignore
+      db = admin.firestore(dbId);
     }
   }
 } catch (e) {
