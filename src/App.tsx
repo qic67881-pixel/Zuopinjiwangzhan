@@ -969,48 +969,54 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // Firebase Realtime Listeners
+  // Fetch all data from proxy API on mount
   useEffect(() => {
-    // 1. Config
-    const unsubConfig = onSnapshot(doc(db, "settings", "config"), (snap) => {
-      if (snap.exists()) {
-        const d = snap.data();
-        if (d.websiteName) setWebsiteName(d.websiteName);
-        if (d.userName) setUserName(d.userName);
-        if (d.userRole) setUserRole(d.userRole);
-        if (d.userBio) setUserBio(d.userBio);
-        if (d.avatarUrl) setAvatarUrl(d.avatarUrl);
-        if (d.categories) setCategories(d.categories);
+    const fetchData = async () => {
+      try {
+        const res = await fetch("/api/data");
+        const data = await res.json();
+        
+        if (data.config) {
+          const d = data.config;
+          if (d.websiteName) setWebsiteName(d.websiteName);
+          if (d.userName) setUserName(d.userName);
+          if (d.userRole) setUserRole(d.userRole);
+          if (d.userBio) setUserBio(d.userBio);
+          if (d.avatarUrl) setAvatarUrl(d.avatarUrl);
+          if (d.categories) setCategories(d.categories);
+        }
+        if (data.theme) setThemeSettings(data.theme);
+        if (data.projects) setProjects(data.projects);
+        if (data.pages) setPageContents(data.pages);
+      } catch (err) {
+        console.error("Failed to fetch data from API:", err);
       }
-    });
-    // 2. Theme
-    const unsubTheme = onSnapshot(doc(db, "settings", "theme"), (snap) => {
-      if (snap.exists()) setThemeSettings(snap.data() as ThemeSettings);
-    });
-    // 3. Projects
-    const unsubProjects = onSnapshot(collection(db, "projects"), (snap) => {
-      const p: Project[] = [];
-      snap.forEach(d => p.push(d.data() as Project));
-      if (p.length > 0) setProjects(p);
-    });
-    // 4. Pages
-    const unsubPages = onSnapshot(collection(db, "pages"), (snap) => {
-      const c = { ...INITIAL_PAGE_CONTENT };
-      snap.forEach(d => { c[d.id] = d.data() as PageContent; });
-      setPageContents(c);
-    });
-    return () => {
-      unsubConfig(); unsubTheme(); unsubProjects(); unsubPages();
     };
+    
+    fetchData();
   }, []);
 
-  // Sync to Firebase helper
+  // Sync to Firebase helper (now uses Proxy API)
   const saveToFirebase = async (path: string, docId: string, data: any) => {
     if (!isAdmin) return;
     try {
-      await setDoc(doc(db, path, docId), data, { merge: true });
+      // Create a payload that the server expects
+      const payload: any = {};
+      if (path === "settings" && docId === "config") payload.config = data;
+      if (path === "settings" && docId === "theme") payload.theme = data;
+      if (path === "projects") payload.projects = [data]; // The server handles merging
+      if (path === "pages") payload.pages = { [docId]: data };
+
+      await fetch("/api/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: payload,
+          token: "public-access" // Using the simple token from server.ts
+        })
+      });
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `${path}/${docId}`);
+      console.error("Failed to save to Proxy API:", err);
     }
   };
 
