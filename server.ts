@@ -33,38 +33,56 @@ try {
     if (serviceAccount && projectId) {
       let sa;
       try {
-        sa = JSON.parse(serviceAccount);
-      } catch {
-        // Handle base64
-        sa = JSON.parse(Buffer.from(serviceAccount, 'base64').toString());
+        // Strip potential BOM and trim spaces/quotes
+        let cleanedSA = serviceAccount.trim().replace(/^['"]|['"]$/g, '');
+        if (cleanedSA.charCodeAt(0) === 0xFEFF) {
+          cleanedSA = cleanedSA.slice(1);
+        }
+        sa = JSON.parse(cleanedSA);
+      } catch (parseError: any) {
+        console.warn("First attempt to parse FIREBASE_SERVICE_ACCOUNT failed, trying Base64... (First characters: " + serviceAccount.substring(0, 10) + ")");
+        try {
+          // Try base64 fallback
+          sa = JSON.parse(Buffer.from(serviceAccount, 'base64').toString());
+        } catch (b64Error: any) {
+          console.error("FIREBASE_SERVICE_ACCOUNT is not a valid JSON string or Base64.");
+          console.error("Original Parse Error:", parseError.message);
+          throw new Error("Invalid Firebase Service Account format. Please ensure you copied the JSON FILE content, not the code snippet.");
+        }
       }
       
-      admin.initializeApp({
-        credential: admin.credential.cert(sa),
-        projectId: projectId,
-      });
-      console.log("Firebase Admin initialized with Service Account for project:", projectId);
+      if (admin.apps.length === 0) {
+        admin.initializeApp({
+          credential: admin.credential.cert(sa),
+          projectId: projectId,
+        });
+        console.log("Firebase Admin initialized with Service Account for project:", projectId);
+      }
     } else if (projectId) {
       // Vercel environment with ADC or specific projectId
-      admin.initializeApp({
-        projectId: projectId,
-      });
-      console.log("Firebase Admin initialized with Project ID:", projectId);
+      if (admin.apps.length === 0) {
+        admin.initializeApp({
+          projectId: projectId,
+        });
+        console.log("Firebase Admin initialized with Project ID:", projectId);
+      }
     } else {
       // Local fallback
-      try {
-        admin.initializeApp();
-        console.log("Firebase Admin initialized with default credentials");
-      } catch (e) {
-        console.warn("Firebase Admin failed to initialize anywhere.");
+      if (admin.apps.length === 0) {
+        try {
+          admin.initializeApp();
+          console.log("Firebase Admin initialized with default credentials");
+        } catch (e) {
+          console.warn("Firebase Admin failed to initialize anywhere.");
+        }
       }
     }
   }
   
   if (admin.apps.length > 0) {
-    if (dbId) {
+    if (dbId && dbId !== "(default)") {
       // @ts-ignore
-      db = admin.firestore(dbId);
+      db = admin.app().firestore(dbId);
     } else {
       db = admin.firestore();
     }
