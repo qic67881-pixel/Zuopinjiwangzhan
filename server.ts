@@ -176,12 +176,13 @@ app.get("/api/data", async (req, res) => {
   let data: any = await getFirestoreData();
   
   if (!data) {
-    // Fallback to local data.json
+    // If Firestore fails, check if we have local data as a LAST resort
     try {
       const localData = await fs.readFile(DATA_FILE, "utf-8");
       data = JSON.parse(localData);
+      console.log("Using local data.json as fallback");
     } catch (e) {
-      data = {};
+      data = { projects: [], pages: {}, config: {}, theme: {} };
     }
   }
   
@@ -194,15 +195,14 @@ app.post("/api/data", async (req, res) => {
     return res.status(403).json({ success: false, message: "Unauthorized" });
   }
   
-  let success = await saveFirestoreData(data);
+  const success = await saveFirestoreData(data);
   
-  if (!success) {
-    // Fallback to local filesystem
+  // Do NOT write to local filesystem in production (Vercel/Cloud Run)
+  if (!success && !process.env.VERCEL) {
     try {
       await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2));
-      success = true;
     } catch (e) {
-      console.error("Failed to write to local filesystem:", e);
+      console.error("Local write failed:", e);
     }
   }
   

@@ -599,8 +599,16 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setAvatarUrl(reader.result as string);
+    reader.onloadend = async () => {
+      const b64 = reader.result as string;
+      setAvatarUrl(b64);
+      // Immediate save for avatar
+      if (isAdmin) {
+        await saveToFirebase("settings", "config", {
+          websiteName, userName, userRole, userBio, categories, avatarUrl: b64
+        });
+        alert("头像已同步到云端！");
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -998,7 +1006,7 @@ export default function App() {
 
   // Sync to Firebase helper (now uses Proxy API)
   const saveToFirebase = async (path: string, docId: string, data: any) => {
-    if (!isAdmin) return;
+    if (!isAdmin) return false;
     try {
       // Create a payload that the server expects
       const payload: any = {};
@@ -1007,16 +1015,19 @@ export default function App() {
       if (path === "projects") payload.projects = [data]; // The server handles merging
       if (path === "pages") payload.pages = { [docId]: data };
 
-      await fetch("/api/data", {
+      const res = await fetch("/api/data", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           data: payload,
-          token: "public-access" // Using the simple token from server.ts
+          token: "public-access"
         })
       });
+      const result = await res.json();
+      return result.success;
     } catch (err) {
       console.error("Failed to save to Proxy API:", err);
+      return false;
     }
   };
 
@@ -1079,9 +1090,14 @@ export default function App() {
   const saveProfile = async () => {
     if (!isAdmin) return;
     setIsEditingProfile(false);
-    await saveToFirebase("settings", "config", {
+    const success = await saveToFirebase("settings", "config", {
       websiteName, userName, userRole, userBio, avatarUrl, categories
     });
+    if (success) {
+      alert("个人资料保存成功！");
+    } else {
+      alert("保存失败，请检查网络或重新登录。");
+    }
   };
 
   const addProject = async (newProjectData: { title: string; category: Category; tag: string; color: string; description: string; file?: File; externalUrl?: string }) => {
@@ -1115,25 +1131,18 @@ export default function App() {
 
     setProjects(prev => [...prev, newProject]);
     if (isAdmin) {
-      try {
-        await setDoc(doc(db, "projects", newProject.id), newProject);
-      } catch (err) {
-        handleFirestoreError(err, OperationType.WRITE, `projects/${newProject.id}`);
-      }
+      await saveToFirebase("projects", newProject.id, newProject);
     }
     
     setIsUploading(false);
     setShowUploadModal(false);
+    alert("新作品发布成功！");
   };
 
   const updateProject = async (updatedProject: Project) => {
     if (!isAdmin) return;
     setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
-    try {
-      await setDoc(doc(db, "projects", updatedProject.id), updatedProject);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `projects/${updatedProject.id}`);
-    }
+    await saveToFirebase("projects", updatedProject.id, updatedProject);
   };
 
   const deleteProject = async (id: string) => {
@@ -1149,11 +1158,7 @@ export default function App() {
   const updatePageContent = async (type: string, content: PageContent) => {
     if (!isAdmin) return;
     setPageContents(prev => ({ ...prev, [type]: content }));
-    try {
-      await setDoc(doc(db, "pages", type), content);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `pages/${type}`);
-    }
+    await saveToFirebase("pages", type, content);
   };
 
   const location = useLocation();
