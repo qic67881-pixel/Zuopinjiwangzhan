@@ -55,7 +55,6 @@ try {
       });
       console.log("Firebase Admin initialized with Service Account for project:", projectId);
     } else if (projectId) {
-      // ADC or specific projectId
       admin.initializeApp({
         projectId: projectId,
       });
@@ -71,19 +70,24 @@ try {
   }
   
   if (admin.apps.length > 0) {
-    const app = admin.app();
-    if (dbId && dbId !== "(default)") {
-      db = getFirestore(app, dbId);
-    } else {
-      db = getFirestore(app);
+    try {
+      // Use standard getter which is more compatible across versions
+      if (dbId && dbId !== "(default)") {
+        // @ts-ignore
+        db = admin.firestore(dbId);
+      } else {
+        db = admin.firestore();
+      }
+      console.log("Firestore initialized successfully");
+    } catch (fsErr: any) {
+      console.error("Firestore initialization failed:", fsErr.message);
     }
-    console.log("Firestore initialized successfully");
   }
-} catch (e) {
-  console.error("Firebase Admin initialization error:", e);
+} catch (e: any) {
+  console.error("Firebase Admin initialization error:", e?.message || e);
 }
 
-const DATA_FILE = path.join(__dirname, "data.json");
+const DATA_FILE = path.join(process.cwd(), "data.json");
 const AUTH_TOKEN = "public-access";
 
 const app = express();
@@ -92,7 +96,10 @@ const PORT = parseInt(process.env.PORT || "3000", 10);
 app.use(express.json({ limit: "50mb" }));
 
 const getFirestoreData = async () => {
-  if (!db) return null;
+  if (!db) {
+    console.warn("getFirestoreData: db is null");
+    return null;
+  }
   
   try {
     const [projectsSnap, pagesSnap, configSnap, themeSnap] = await Promise.all([
@@ -114,15 +121,15 @@ const getFirestoreData = async () => {
       config: configSnap.data() || {},
       theme: themeSnap.data() || {},
     };
-  } catch (e) {
-    console.error("Error fetching from Firestore:", e);
+  } catch (e: any) {
+    console.error("Error fetching from Firestore:", e?.message || e);
     return null;
   }
 };
 
 const saveFirestoreData = async (data: any) => {
   if (!db) {
-    console.warn("Firestore database not initialized. Cannot save to cloud.");
+    console.error("saveFirestoreData: db is null");
     return false;
   }
   
@@ -143,8 +150,6 @@ const saveFirestoreData = async (data: any) => {
         if (p.id) {
           batch.set(db.collection("projects").doc(p.id), p, { merge: true });
           hasOps = true;
-        } else {
-          console.error("Attempted to save project without ID:", p);
         }
       }
     }
@@ -161,8 +166,11 @@ const saveFirestoreData = async (data: any) => {
       return true;
     }
     return false;
-  } catch (e) {
-    console.error("Error saving to Firestore:", e);
+  } catch (e: any) {
+    console.error("Error saving to Firestore:", e?.message || e);
+    if (e?.message?.includes("too large")) {
+      console.error("CRITICAL: The data you are trying to save is too large for Firestore (1MB limit per document). This usually happens with large Base64 images.");
+    }
     return false;
   }
 };

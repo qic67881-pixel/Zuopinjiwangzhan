@@ -594,20 +594,62 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
       ? projects 
       : projects.filter((p: any) => p.category === activeCategory);
 
+  // Helper to compress images before uploading
+  const compressImage = (base64Str: string, maxWidth = 1200, maxHeight = 1200, quality = 0.7): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height *= maxWidth / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width *= maxHeight / height;
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = () => resolve(base64Str);
+    });
+  };
+
   const handleAvatarUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onloadend = async () => {
-      const b64 = reader.result as string;
+      let b64 = reader.result as string;
+      
+      // Compress if it looks large
+      if (b64.length > 200000) {
+        b64 = await compressImage(b64, 400, 400, 0.6);
+      }
+
       setAvatarUrl(b64);
       // Immediate save for avatar
       if (isAdmin) {
-        await saveToFirebase("settings", "config", {
+        const success = await saveToFirebase("settings", "config", {
           websiteName, userName, userRole, userBio, categories, avatarUrl: b64
         });
-        alert("头像已同步到云端！");
+        if (success) {
+          alert("头像已同步到云端！");
+        } else {
+          alert("头像保存失败，可能是文件太大。");
+        }
       }
     };
     reader.readAsDataURL(file);
@@ -1113,7 +1155,13 @@ export default function App() {
       const type = file.type.startsWith("video") ? "video" : "image";
       const url = await new Promise<string>((resolve) => {
         const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
+        reader.onloadend = async () => {
+          let b64 = reader.result as string;
+          if (type === "image" && b64.length > 500000) {
+            b64 = await compressImage(b64, 1200, 1200, 0.7);
+          }
+          resolve(b64);
+        };
         reader.readAsDataURL(file);
       });
       mediaItems.push({ id: Date.now().toString(), url, type });
@@ -1131,7 +1179,10 @@ export default function App() {
 
     setProjects(prev => [...prev, newProject]);
     if (isAdmin) {
-      await saveToFirebase("projects", newProject.id, newProject);
+      const success = await saveToFirebase("projects", newProject.id, newProject);
+      if (!success) {
+        alert("同步到云端失败，可能是图片太大。已暂时保存在本地浏览器中。");
+      }
     }
     
     setIsUploading(false);
@@ -1142,7 +1193,10 @@ export default function App() {
   const updateProject = async (updatedProject: Project) => {
     if (!isAdmin) return;
     setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
-    await saveToFirebase("projects", updatedProject.id, updatedProject);
+    const success = await saveToFirebase("projects", updatedProject.id, updatedProject);
+    if (!success) {
+      alert("同步更改失败。");
+    }
   };
 
   const deleteProject = async (id: string) => {
