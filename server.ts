@@ -4,6 +4,7 @@ import fs from "fs/promises";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
 
 dotenv.config();
 
@@ -26,66 +27,57 @@ try {
   }
 
   // Use environment variables as priority/fallback
-  const projectId = config.projectId || process.env.VITE_FIREBASE_PROJECT_ID;
+  const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
+  let sa: any = null;
+  
+  if (saRaw) {
+    try {
+      // Strip potential BOM and trim spaces/quotes
+      const cleanedSA = saRaw.trim().replace(/^['"]|['"]$/g, '');
+      sa = JSON.parse(cleanedSA);
+    } catch (e) {
+      try {
+        sa = JSON.parse(Buffer.from(saRaw, 'base64').toString());
+      } catch (b64e) {
+        console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT JSON. Please check the variable content.");
+      }
+    }
+  }
+
+  const projectId = sa?.project_id || config.projectId || process.env.VITE_FIREBASE_PROJECT_ID;
   const dbId = config.firestoreDatabaseId || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
 
   if (admin.apps.length === 0) {
-    if (serviceAccount && projectId) {
-      let sa;
-      try {
-        // Strip potential BOM and trim spaces/quotes
-        let cleanedSA = serviceAccount.trim().replace(/^['"]|['"]$/g, '');
-        if (cleanedSA.charCodeAt(0) === 0xFEFF) {
-          cleanedSA = cleanedSA.slice(1);
-        }
-        sa = JSON.parse(cleanedSA);
-      } catch (parseError: any) {
-        console.warn("First attempt to parse FIREBASE_SERVICE_ACCOUNT failed, trying Base64... (First characters: " + serviceAccount.substring(0, 10) + ")");
-        try {
-          // Try base64 fallback
-          sa = JSON.parse(Buffer.from(serviceAccount, 'base64').toString());
-        } catch (b64Error: any) {
-          console.error("FIREBASE_SERVICE_ACCOUNT is not a valid JSON string or Base64.");
-          console.error("Original Parse Error:", parseError.message);
-          throw new Error("Invalid Firebase Service Account format. Please ensure you copied the JSON FILE content, not the code snippet.");
-        }
-      }
-      
-      if (admin.apps.length === 0) {
-        admin.initializeApp({
-          credential: admin.credential.cert(sa),
-          projectId: projectId,
-        });
-        console.log("Firebase Admin initialized with Service Account for project:", projectId);
-      }
+    if (sa && projectId) {
+      admin.initializeApp({
+        credential: admin.credential.cert(sa),
+        projectId: projectId,
+      });
+      console.log("Firebase Admin initialized with Service Account for project:", projectId);
     } else if (projectId) {
-      // Vercel environment with ADC or specific projectId
-      if (admin.apps.length === 0) {
-        admin.initializeApp({
-          projectId: projectId,
-        });
-        console.log("Firebase Admin initialized with Project ID:", projectId);
-      }
+      // ADC or specific projectId
+      admin.initializeApp({
+        projectId: projectId,
+      });
+      console.log("Firebase Admin initialized with Project ID:", projectId);
     } else {
-      // Local fallback
-      if (admin.apps.length === 0) {
-        try {
-          admin.initializeApp();
-          console.log("Firebase Admin initialized with default credentials");
-        } catch (e) {
-          console.warn("Firebase Admin failed to initialize anywhere.");
-        }
+      try {
+        admin.initializeApp();
+        console.log("Firebase Admin initialized with default credentials");
+      } catch (e) {
+        console.warn("Firebase Admin failed to initialize. Will fallback to local data if available.");
       }
     }
   }
   
   if (admin.apps.length > 0) {
+    const app = admin.app();
     if (dbId && dbId !== "(default)") {
-      // @ts-ignore
-      db = admin.app().firestore(dbId);
+      db = getFirestore(app, dbId);
     } else {
-      db = admin.firestore();
+      db = getFirestore(app);
     }
+    console.log("Firestore initialized successfully");
   }
 } catch (e) {
   console.error("Firebase Admin initialization error:", e);
