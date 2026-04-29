@@ -23,50 +23,50 @@ try {
     config = JSON.parse(configRaw);
   } catch (e) {
     console.warn("Could not read firebase-applet-config.json, using environment variables.");
-    config = {
-      projectId: process.env.VITE_FIREBASE_PROJECT_ID,
-      firestoreDatabaseId: process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID
-    };
   }
 
-  if (serviceAccount && config.projectId) {
-    let sa;
-    try {
-      sa = JSON.parse(serviceAccount);
-    } catch {
-      sa = JSON.parse(Buffer.from(serviceAccount, 'base64').toString());
-    }
-    
-    // Check if any apps already exist to prevent re-initialization error
-    if (admin.apps.length === 0) {
+  // Use environment variables as priority/fallback
+  const projectId = config.projectId || process.env.VITE_FIREBASE_PROJECT_ID;
+  const dbId = config.firestoreDatabaseId || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
+
+  if (admin.apps.length === 0) {
+    if (serviceAccount && projectId) {
+      let sa;
+      try {
+        sa = JSON.parse(serviceAccount);
+      } catch {
+        // Handle base64
+        sa = JSON.parse(Buffer.from(serviceAccount, 'base64').toString());
+      }
+      
       admin.initializeApp({
         credential: admin.credential.cert(sa),
-        projectId: config.projectId,
+        projectId: projectId,
       });
-    }
-  } else if (process.env.VERCEL) {
-    if (admin.apps.length === 0) {
+      console.log("Firebase Admin initialized with Service Account for project:", projectId);
+    } else if (projectId) {
+      // Vercel environment with ADC or specific projectId
       admin.initializeApp({
-        projectId: config.projectId || process.env.VITE_FIREBASE_PROJECT_ID,
+        projectId: projectId,
       });
-    }
-  } else {
-    // Local fallback
-    if (admin.apps.length === 0) {
+      console.log("Firebase Admin initialized with Project ID:", projectId);
+    } else {
+      // Local fallback
       try {
         admin.initializeApp();
+        console.log("Firebase Admin initialized with default credentials");
       } catch (e) {
-        console.warn("Firebase Admin fallback failed.");
+        console.warn("Firebase Admin failed to initialize anywhere.");
       }
     }
   }
   
   if (admin.apps.length > 0) {
-    db = admin.firestore();
-    const dbId = config.firestoreDatabaseId || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
     if (dbId) {
       // @ts-ignore
       db = admin.firestore(dbId);
+    } else {
+      db = admin.firestore();
     }
   }
 } catch (e) {
@@ -111,31 +111,46 @@ const getFirestoreData = async () => {
 };
 
 const saveFirestoreData = async (data: any) => {
-  if (!db) return false;
+  if (!db) {
+    console.warn("Firestore database not initialized. Cannot save to cloud.");
+    return false;
+  }
   
   try {
     const batch = db.batch();
+    let hasOps = false;
     
-    // We'll support updating specific items or the whole thing if needed
     if (data.config) {
       batch.set(db.collection("settings").doc("config"), data.config, { merge: true });
+      hasOps = true;
     }
     if (data.theme) {
       batch.set(db.collection("settings").doc("theme"), data.theme, { merge: true });
+      hasOps = true;
     }
-    if (data.projects) {
+    if (data.projects && Array.isArray(data.projects)) {
       for (const p of data.projects) {
-        batch.set(db.collection("projects").doc(p.id), p, { merge: true });
+        if (p.id) {
+          batch.set(db.collection("projects").doc(p.id), p, { merge: true });
+          hasOps = true;
+        } else {
+          console.error("Attempted to save project without ID:", p);
+        }
       }
     }
     if (data.pages) {
       for (const [id, content] of Object.entries(data.pages)) {
         batch.set(db.collection("pages").doc(id), content as any, { merge: true });
+        hasOps = true;
       }
     }
     
-    await batch.commit();
-    return true;
+    if (hasOps) {
+      await batch.commit();
+      console.log("Successfully committed batch to Firestore");
+      return true;
+    }
+    return false;
   } catch (e) {
     console.error("Error saving to Firestore:", e);
     return false;
