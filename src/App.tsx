@@ -215,7 +215,44 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
   );
 }
 
-  function ProjectDetail({ projects, updateProject, deleteProject, themeSettings, isAdmin }: { projects: Project[], updateProject: (p: Project) => void, deleteProject: (id: string) => void, themeSettings: ThemeSettings, isAdmin: boolean }) {
+  // Helper to compress images before uploading
+const compressImage = (base64Str: string, maxWidth = 1200, maxHeight = 1200, quality = 0.7): Promise<string> => {
+  return new Promise((resolve) => {
+    // If not a base64 image, skip
+    if (!base64Str.startsWith('data:image')) {
+      resolve(base64Str);
+      return;
+    }
+    const img = new Image();
+    img.src = base64Str;
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxWidth) {
+          height *= maxWidth / width;
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width *= maxHeight / height;
+          height = maxHeight;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx?.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => resolve(base64Str);
+  });
+};
+
+function ProjectDetail({ projects, updateProject, deleteProject, themeSettings, isAdmin }: { projects: Project[], updateProject: (p: Project) => void, deleteProject: (id: string) => void, themeSettings: ThemeSettings, isAdmin: boolean }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const project = projects.find(p => p.id === id);
@@ -248,9 +285,21 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const type = file.type.startsWith("video") ? "video" : "image";
+      
+      if (type === "video" && file.size > 2 * 1024 * 1024) {
+        alert(`视频 ${file.name} 过大（超过2MB）。请使用URL链接。`);
+        continue;
+      }
+
       const url = await new Promise<string>((resolve) => {
         const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
+        reader.onloadend = async () => {
+          let b64 = reader.result as string;
+          if (type === "image") {
+            b64 = await compressImage(b64, 1000, 1000, 0.6);
+          }
+          resolve(b64);
+        };
         reader.readAsDataURL(file);
       });
       newMediaItems.push({ id: Date.now().toString() + i, url, type });
@@ -447,9 +496,21 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const type = file.type.startsWith("video") ? "video" : "image";
+      
+      if (type === "video" && file.size > 2 * 1024 * 1024) {
+        alert(`视频 ${file.name} 过大（超过2MB）。请使用URL链接。`);
+        continue;
+      }
+
       const url = await new Promise<string>((resolve) => {
         const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
+        reader.onloadend = async () => {
+          let b64 = reader.result as string;
+          if (type === "image") {
+            b64 = await compressImage(b64, 1000, 1000, 0.6);
+          }
+          resolve(b64);
+        };
         reader.readAsDataURL(file);
       });
       newMediaItems.push({ id: Date.now().toString() + i, url, type });
@@ -584,46 +645,21 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
     categories, setCategories,
     isEditingProfile, setIsEditingProfile, setUserName, setUserRole, setUserBio, saveProfile,
     setShowUploadModal, deleteProject, avatarUrl, themeSettings, setShowSettingsModal, setAvatarUrl,
-    isAdmin, handleLoginClick, handleLogoutAdmin
+    isAdmin, handleLoginClick, handleLogoutAdmin, saveToFirebase
   }: any) {
   const navigate = useNavigate();
   
-  const filteredProjects = activeCategory === "Selected" 
-    ? projects.slice(0, 4) 
-    : activeCategory === "All" 
-      ? projects 
-      : projects.filter((p: any) => p.category === activeCategory);
+  const filteredProjects = activeCategory === "All" || activeCategory === "Selected"
+    ? projects 
+    : projects.filter((p: any) => p.category === activeCategory);
+  
+  // Show only 4 if on "Selected" view (optional, but requested by earlier logic)
+  const finalProjects = activeCategory === "Selected" ? filteredProjects.slice(0, 4) : filteredProjects;
 
-  // Helper to compress images before uploading
-  const compressImage = (base64Str: string, maxWidth = 1200, maxHeight = 1200, quality = 0.7): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.src = base64Str;
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > maxWidth) {
-            height *= maxWidth / width;
-            width = maxWidth;
-          }
-        } else {
-          if (height > maxHeight) {
-            width *= maxHeight / height;
-            height = maxHeight;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx?.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      };
-      img.onerror = () => resolve(base64Str);
-    });
+  // Helper to check object size
+  const checkDataSize = (data: any) => {
+    const str = JSON.stringify(data);
+    return str.length; // Approximate size in bytes
   };
 
   const handleAvatarUpload = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -856,7 +892,7 @@ function GlobalBackground({ settings }: { settings: ThemeSettings }) {
           {/* Work Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <AnimatePresence mode="popLayout">
-              {filteredProjects.map((project: any) => (
+              {finalProjects.map((project: any) => (
                 <motion.div
                   layout
                   key={project.id}
@@ -976,8 +1012,8 @@ class ErrorBoundary extends (Component as any) {
 
 export default function App() {
   // State for categories
-  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
-  const [activeCategory, setActiveCategory] = useState<string>("Selected");
+  const [categories, setCategories] = useState<string[]>(["All", ...DEFAULT_CATEGORIES]);
+  const [activeCategory, setActiveCategory] = useState<string>("All");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -1004,6 +1040,7 @@ export default function App() {
 
   // State for theme
   const [themeSettings, setThemeSettings] = useState<ThemeSettings>(INITIAL_THEME);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   // Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -1038,8 +1075,11 @@ export default function App() {
         if (data.theme) setThemeSettings(data.theme);
         if (data.projects) setProjects(data.projects);
         if (data.pages) setPageContents(data.pages);
+        setDataLoaded(true);
       } catch (err) {
         console.error("Failed to fetch data from API:", err);
+        // Even on error, mark as loaded to allow saves/prevent stale overrides
+        setDataLoaded(true);
       }
     };
     
@@ -1108,7 +1148,7 @@ export default function App() {
   // Effect to automatically persist changes to Firebase (Debounced to avoid loops)
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (isAuthReady && isAdmin) {
+      if (isAuthReady && isAdmin && dataLoaded) {
         saveToFirebase("settings", "config", {
           websiteName, userName, userRole, userBio, avatarUrl, categories
         });
@@ -1116,17 +1156,17 @@ export default function App() {
     }, 2000); // 2-second debounce
     
     return () => clearTimeout(timer);
-  }, [websiteName, userName, userRole, userBio, avatarUrl, categories, isAuthReady, isAdmin]);
+  }, [websiteName, userName, userRole, userBio, avatarUrl, categories, isAuthReady, isAdmin, dataLoaded]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (isAuthReady && isAdmin) {
+      if (isAuthReady && isAdmin && dataLoaded) {
         saveToFirebase("settings", "theme", themeSettings);
       }
     }, 2000); // 2-second debounce
 
     return () => clearTimeout(timer);
-  }, [themeSettings, isAuthReady, isAdmin]);
+  }, [themeSettings, isAuthReady, isAdmin, dataLoaded]);
 
   // Save Profile
   const saveProfile = async () => {
@@ -1153,12 +1193,20 @@ export default function App() {
     } else if (newProjectData.file) {
       const file = newProjectData.file;
       const type = file.type.startsWith("video") ? "video" : "image";
+      
+      if (type === "video" && file.size > 2 * 1024 * 1024) {
+        alert("视频文件过大（超过2MB）。请使用外部URL链接，或上传非常短的小视频。");
+        setIsUploading(false);
+        return;
+      }
+
       const url = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = async () => {
           let b64 = reader.result as string;
-          if (type === "image" && b64.length > 500000) {
-            b64 = await compressImage(b64, 1200, 1200, 0.7);
+          if (type === "image") {
+            // More aggressive compression for project images
+            b64 = await compressImage(b64, 1000, 1000, 0.6);
           }
           resolve(b64);
         };
@@ -1177,42 +1225,83 @@ export default function App() {
       mediaItems,
     };
 
+    // Calculate total project size (approx)
+    const projectSize = JSON.stringify(newProject).length;
+    if (projectSize > 1000000) {
+      alert("作品集数据过大，无法同步到云端。请尝试上传更小的图片或使用外部URL。");
+      setIsUploading(false);
+      return;
+    }
+
     setProjects(prev => [...prev, newProject]);
     if (isAdmin) {
       const success = await saveToFirebase("projects", newProject.id, newProject);
       if (!success) {
-        alert("同步到云端失败，可能是图片太大。已暂时保存在本地浏览器中。");
+        alert("同步到云端失败。请检查是否文件过大，或网络是否异常。");
+      } else {
+        alert("新作品发布并同步成功！");
       }
+    } else {
+      alert("新作品已添加到本地（预览模式）。");
     }
-    
-    setIsUploading(false);
-    setShowUploadModal(false);
-    alert("新作品发布成功！");
   };
 
   const updateProject = async (updatedProject: Project) => {
     if (!isAdmin) return;
+    
+    // Size check
+    if (JSON.stringify(updatedProject).length > 1000000) {
+      alert("该项目内容过大（超过1MB），无法保存。请减少高解析度图片或使用外部URL链接。");
+      return;
+    }
+
     setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
     const success = await saveToFirebase("projects", updatedProject.id, updatedProject);
     if (!success) {
-      alert("同步更改失败。");
+      alert("同步更改到云端失败。可能包含太大文件。");
     }
   };
 
   const deleteProject = async (id: string) => {
     if (!isAdmin) return;
+    if (!confirm("确定要删除这个作品吗？")) return;
+    
     setProjects(prev => prev.filter(p => p.id !== id));
     try {
-      await deleteDoc(doc(db, "projects", id));
+      const res = await fetch("/api/data", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: id,
+          token: "public-access"
+        })
+      });
+      const result = await res.json();
+      if (result.success) {
+        alert("已成功删除项目。");
+      } else {
+        alert("删除失败，请稍后重试。");
+      }
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `projects/${id}`);
+      console.error("Failed to delete project through Proxy API:", err);
+      alert("删除请求失败。");
     }
   };
 
   const updatePageContent = async (type: string, content: PageContent) => {
     if (!isAdmin) return;
+    
+    // Size check for pages too
+    if (JSON.stringify(content).length > 1000000) {
+      alert("页面内容过大，无法保存。请减少图片数量或压缩图片。");
+      return;
+    }
+
     setPageContents(prev => ({ ...prev, [type]: content }));
-    await saveToFirebase("pages", type, content);
+    const success = await saveToFirebase("pages", type, content);
+    if (!success) {
+      alert("同步页面内容到云端失败。");
+    }
   };
 
   const location = useLocation();
@@ -1247,6 +1336,7 @@ export default function App() {
               isAdmin={isAdmin}
               handleLoginClick={() => setShowLoginModal(true)}
               handleLogoutAdmin={handleLogoutAdmin}
+              saveToFirebase={saveToFirebase}
             />
           } />
           <Route path="/project/:id" element={<ProjectDetail projects={projects} updateProject={updateProject} deleteProject={deleteProject} themeSettings={themeSettings} isAdmin={isAdmin} />} />
@@ -1417,7 +1507,7 @@ export default function App() {
                       accept="image/*,video/*" 
                       className="bg-background border border-border-custom p-3 rounded-lg outline-none focus:border-accent file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-accent file:text-white hover:file:bg-accent/80" 
                     />
-                    <p className="text-[10px] text-text-dim italic">注：直接上传的文件体积过大可能导致保存失败。</p>
+                    <p className="text-[10px] text-text-dim italic">注：直接上传本地文件体积有限（建议图片 &lt; 500KB，视频 &lt; 2MB）。</p>
                   </div>
 
                   <div className="flex items-center gap-4">
@@ -1427,9 +1517,9 @@ export default function App() {
                   </div>
 
                   <div className="flex flex-col gap-2">
-                    <label className="text-xs uppercase tracking-widest text-text-dim">媒体 URL 链接 (支持大视频)</label>
-                    <input name="externalUrl" className="bg-background border border-border-custom p-3 rounded-lg outline-none focus:border-accent text-sm" placeholder="https://example.com/video.mp4" />
-                    <p className="text-[10px] text-text-dim">推荐将大视频上传到图床或云存储后贴入链接，速度极快且无大小限制。</p>
+                    <label className="text-xs uppercase tracking-widest text-text-dim">媒体 URL 链接 (推荐方式)</label>
+                    <input name="externalUrl" className="bg-background border border-border-custom p-3 rounded-lg outline-none focus:border-accent text-sm" placeholder="https://example.com/item.jpg" />
+                    <p className="text-[10px] text-text-dim">推荐使用图床链接或视频直链，速度极快且无大小限制。</p>
                   </div>
                 </div>
 

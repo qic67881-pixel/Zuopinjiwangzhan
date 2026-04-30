@@ -71,20 +71,21 @@ try {
   
   if (admin.apps.length > 0) {
     try {
-      // Use standard getter which is more compatible across versions
+      // Standard way to get Firestore instance
       if (dbId && dbId !== "(default)") {
         // @ts-ignore
         db = admin.firestore(dbId);
+        console.log(`Firestore initialized for database: ${dbId}`);
       } else {
         db = admin.firestore();
+        console.log("Firestore initialized for default database");
       }
-      console.log("Firestore initialized successfully");
     } catch (fsErr: any) {
       console.error("Firestore initialization failed:", fsErr.message);
     }
   }
 } catch (e: any) {
-  console.error("Firebase Admin initialization error:", e?.message || e);
+  console.error("Critical Firebase initialization error:", e?.message || e);
 }
 
 const DATA_FILE = path.join(process.cwd(), "data.json");
@@ -97,11 +98,12 @@ app.use(express.json({ limit: "50mb" }));
 
 const getFirestoreData = async () => {
   if (!db) {
-    console.warn("getFirestoreData: db is null");
+    console.error("getFirestoreData: Firestore DB not initialized");
     return null;
   }
   
   try {
+    console.log("Starting Firestore data fetch...");
     const [projectsSnap, pagesSnap, configSnap, themeSnap] = await Promise.all([
       db.collection("projects").get(),
       db.collection("pages").get(),
@@ -115,6 +117,7 @@ const getFirestoreData = async () => {
       pages[doc.id] = doc.data();
     });
 
+    console.log(`Fetch successful: ${projects.length} projects, ${Object.keys(pages).length} pages`);
     return {
       projects,
       pages,
@@ -122,7 +125,7 @@ const getFirestoreData = async () => {
       theme: themeSnap.data() || {},
     };
   } catch (e: any) {
-    console.error("Error fetching from Firestore:", e?.message || e);
+    console.error("Firestore fetch error details:", e);
     return null;
   }
 };
@@ -181,17 +184,22 @@ app.post("/api/login", (req, res) => {
 });
 
 app.get("/api/data", async (req, res) => {
+  console.log("Fetching data requested...");
   let data: any = await getFirestoreData();
   
   if (!data) {
+    console.warn("Firestore data fetch returned null, falling back to local file if it exists.");
     // If Firestore fails, check if we have local data as a LAST resort
     try {
       const localData = await fs.readFile(DATA_FILE, "utf-8");
       data = JSON.parse(localData);
       console.log("Using local data.json as fallback");
     } catch (e) {
+      console.warn("Local data.json fallback failed or file missing.");
       data = { projects: [], pages: {}, config: {}, theme: {} };
     }
+  } else {
+    console.log(`Successfully fetched from Firestore. Projects count: ${data.projects?.length || 0}`);
   }
   
   res.json(data);
@@ -200,21 +208,51 @@ app.get("/api/data", async (req, res) => {
 app.post("/api/data", async (req, res) => {
   const { data, token } = req.body;
   if (token !== AUTH_TOKEN && token !== "authenticated-session-token") {
+    console.warn("Unauthorized API access attempt");
     return res.status(403).json({ success: false, message: "Unauthorized" });
   }
   
+  console.log(`Received data save request. Keys: ${Object.keys(data).join(", ")}`);
   const success = await saveFirestoreData(data);
   
-  // Do NOT write to local filesystem in production (Vercel/Cloud Run)
-  if (!success && !process.env.VERCEL) {
+  // Do NOT write to local filesystem if we are in a read-only environment
+  let isReadOnly = false;
+  try {
+    const testFile = path.join(process.cwd(), ".write-test");
+    await fs.writeFile(testFile, "test");
+    await fs.unlink(testFile);
+  } catch (e) {
+    isReadOnly = true;
+  }
+
+  if (!success && !isReadOnly) {
     try {
       await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2));
-    } catch (e) {
-      console.error("Local write failed:", e);
+      console.log("Fallback: Data saved to local data.json");
+    } catch (e: any) {
+      console.error("Local write failed:", e?.message);
     }
   }
   
   res.json({ success });
+});
+
+app.delete("/api/data", async (req, res) => {
+  const { projectId, token } = req.body;
+  if (token !== AUTH_TOKEN && token !== "authenticated-session-token") {
+    return res.status(403).json({ success: false, message: "Unauthorized" });
+  }
+
+  if (!db) return res.status(500).json({ success: false, message: "DB not initialized" });
+
+  try {
+    console.log(`Deleting project: ${projectId}`);
+    await db.collection("projects").doc(projectId).delete();
+    res.json({ success: true });
+  } catch (e: any) {
+    console.error("Error deleting from Firestore:", e?.message);
+    res.status(500).json({ success: false, error: e?.message });
+  }
 });
 
 // Setup Rendering
