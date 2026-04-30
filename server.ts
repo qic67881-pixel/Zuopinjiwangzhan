@@ -3,7 +3,8 @@ import path from "path";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-import admin from "firebase-admin";
+import { initializeApp, cert, getApps, getApp, App } from "firebase-admin/app";
+import { getFirestore, Firestore } from "firebase-admin/firestore";
 
 dotenv.config();
 
@@ -11,15 +12,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Firebase Initialization Singleton
-let db: admin.firestore.Firestore | null = null;
-let initPromise: Promise<admin.firestore.Firestore> | null = null;
+let db: Firestore | null = null;
+let initPromise: Promise<Firestore> | null = null;
 
-async function getDb(): Promise<admin.firestore.Firestore> {
+async function getDb(): Promise<Firestore> {
   if (db) return db;
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    console.log("Initializing Firebase Admin...");
+    console.log("Initializing Firebase Admin (Modular)...");
     try {
       const configPath = path.join(process.cwd(), "firebase-applet-config.json");
       let config: any = {};
@@ -27,7 +28,7 @@ async function getDb(): Promise<admin.firestore.Firestore> {
         const configRaw = await fs.readFile(configPath, "utf-8");
         config = JSON.parse(configRaw);
       } catch (e) {
-        console.log("Config file not found, checked env vars.");
+        // Ignored
       }
 
       const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -35,54 +36,39 @@ async function getDb(): Promise<admin.firestore.Firestore> {
       
       if (saRaw && saRaw.length > 50) {
         try {
-          // Clean the string and handle both JSON and Base64
           const cleaned = saRaw.trim().replace(/^['"]|['"]$/g, '');
           const saJson = cleaned.startsWith('{') ? cleaned : Buffer.from(cleaned, 'base64').toString();
           sa = JSON.parse(saJson);
-          
-          // CRITICAL: Ensure private key has proper newlines
-          if (sa.private_key) {
-            sa.private_key = sa.private_key.replace(/\\n/g, '\n');
-          }
+          if (sa.private_key) sa.private_key = sa.private_key.replace(/\\n/g, '\n');
         } catch (e: any) {
-          console.error("Service Account parse error:", e.message);
+          console.error("SA parse error:", e.message);
         }
       }
 
       const projectId = sa?.project_id || config.projectId || process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
       const dbId = config.firestoreDatabaseId || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
 
-      if (admin.apps.length === 0) {
+      let app: App;
+      if (getApps().length === 0) {
         if (sa && projectId) {
-          admin.initializeApp({
-            credential: admin.credential.cert(sa),
+          app = initializeApp({
+            credential: cert(sa),
             projectId: projectId,
           });
-          console.log("Firebase initialized via Service Account for project:", projectId);
-        } else if (projectId) {
-          admin.initializeApp({ projectId });
-          console.log("Firebase initialized via Project ID.");
         } else {
-          admin.initializeApp();
-          console.log("Firebase initialized via Default Credentials.");
+          app = initializeApp({ projectId: projectId || undefined });
         }
-      }
-
-      // Important: Call firestore() after initializeApp
-      if (dbId && dbId !== "(default)") {
-        // @ts-ignore
-        db = admin.firestore(dbId);
       } else {
-        db = admin.firestore();
+        app = getApp();
       }
 
-      if (!db) throw new Error("Firestore failed to initialize.");
+      db = getFirestore(app, (dbId && dbId !== "(default)") ? dbId : undefined);
       
-      console.log("Firestore ready.");
+      console.log("Firestore ready (Modular).");
       return db;
     } catch (err: any) {
       console.error("Fatal initialization error:", err.message);
-      initPromise = null; // Allow retry on next request
+      initPromise = null;
       throw err;
     }
   })();
