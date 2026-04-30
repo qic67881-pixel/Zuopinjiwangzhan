@@ -10,73 +10,84 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Initialize Firebase Admin
-let dbInstance: admin.firestore.Firestore | null = null;
+// Firebase Initialization Singleton
+let db: admin.firestore.Firestore | null = null;
+let initPromise: Promise<admin.firestore.Firestore> | null = null;
 
 async function getDb(): Promise<admin.firestore.Firestore> {
-  if (dbInstance) return dbInstance;
+  if (db) return db;
+  if (initPromise) return initPromise;
 
-  console.log("Attempting to initialize Firestore...");
-  
-  try {
-    const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-    let config: any = {};
+  initPromise = (async () => {
+    console.log("Initializing Firebase Admin...");
     try {
-      const configRaw = await fs.readFile(configPath, "utf-8");
-      config = JSON.parse(configRaw);
-    } catch (e) {
-      // Ignored
-    }
-
-    const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
-    let sa: any = null;
-    
-    if (saRaw && saRaw.length > 50) {
+      const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+      let config: any = {};
       try {
-        const cleanedSA = saRaw.trim().replace(/^['"]|['"]$/g, '').replace(/\\n/g, '\n');
-        sa = JSON.parse(cleanedSA);
+        const configRaw = await fs.readFile(configPath, "utf-8");
+        config = JSON.parse(configRaw);
       } catch (e) {
+        console.log("Config file not found, checked env vars.");
+      }
+
+      const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
+      let sa: any = null;
+      
+      if (saRaw && saRaw.length > 50) {
         try {
-          sa = JSON.parse(Buffer.from(saRaw, 'base64').toString().replace(/\\n/g, '\n'));
-        } catch (b64e) {
-          console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT");
+          // Clean the string and handle both JSON and Base64
+          const cleaned = saRaw.trim().replace(/^['"]|['"]$/g, '');
+          const saJson = cleaned.startsWith('{') ? cleaned : Buffer.from(cleaned, 'base64').toString();
+          sa = JSON.parse(saJson);
+          
+          // CRITICAL: Ensure private key has proper newlines
+          if (sa.private_key) {
+            sa.private_key = sa.private_key.replace(/\\n/g, '\n');
+          }
+        } catch (e: any) {
+          console.error("Service Account parse error:", e.message);
         }
       }
-    }
 
-    const projectId = sa?.project_id || config.projectId || process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
-    const dbId = config.firestoreDatabaseId || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
+      const projectId = sa?.project_id || config.projectId || process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
+      const dbId = config.firestoreDatabaseId || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
 
-    if (admin.apps.length === 0) {
-      if (sa && projectId) {
-        admin.initializeApp({
-          credential: admin.credential.cert(sa),
-          projectId: projectId,
-        });
-        console.log("Firebase initialized via Service Account Cert");
-      } else if (projectId) {
-        admin.initializeApp({ projectId });
-        console.log("Firebase initialized via Project ID");
-      } else {
-        admin.initializeApp();
-        console.log("Firebase initialized via Default Credentials");
+      if (admin.apps.length === 0) {
+        if (sa && projectId) {
+          admin.initializeApp({
+            credential: admin.credential.cert(sa),
+            projectId: projectId,
+          });
+          console.log("Firebase initialized via Service Account for project:", projectId);
+        } else if (projectId) {
+          admin.initializeApp({ projectId });
+          console.log("Firebase initialized via Project ID.");
+        } else {
+          admin.initializeApp();
+          console.log("Firebase initialized via Default Credentials.");
+        }
       }
+
+      // Important: Call firestore() after initializeApp
+      if (dbId && dbId !== "(default)") {
+        // @ts-ignore
+        db = admin.firestore(dbId);
+      } else {
+        db = admin.firestore();
+      }
+
+      if (!db) throw new Error("Firestore failed to initialize.");
+      
+      console.log("Firestore ready.");
+      return db;
+    } catch (err: any) {
+      console.error("Fatal initialization error:", err.message);
+      initPromise = null; // Allow retry on next request
+      throw err;
     }
-    
-    if (dbId && dbId !== "(default)") {
-      dbInstance = admin.firestore(dbId);
-    } else {
-      dbInstance = admin.firestore();
-    }
-    
-    if (!dbInstance) throw new Error("Firestore instance creation returned null");
-    
-    console.log("Firestore initialized successfully!");
-    return dbInstance;
-  } catch (err: any) {
-    console.error("DB Initialization ERROR:", err.message);
-    throw err;
-  }
+  })();
+
+  return initPromise;
 }
 
 const DATA_FILE = path.join(process.cwd(), "data.json");
@@ -166,7 +177,7 @@ const saveFirestoreData = async (data: any) => {
 app.get("/api/health", (req, res) => {
   res.json({ 
     status: "ok", 
-    firestore: dbInstance ? "initialized" : "uninitialized",
+    firestore: db ? "initialized" : "uninitialized",
     env: process.env.VERCEL ? "vercel" : "other"
   });
 });
