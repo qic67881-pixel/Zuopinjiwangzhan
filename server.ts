@@ -132,8 +132,7 @@ const getFirestoreData = async () => {
 
 const saveFirestoreData = async (data: any) => {
   if (!db) {
-    console.error("saveFirestoreData: db is null");
-    return false;
+    throw new Error("Firestore database not initialized. Please verify your FIREBASE_SERVICE_ACCOUNT or firebase-applet-config.json settings.");
   }
   
   try {
@@ -170,15 +169,25 @@ const saveFirestoreData = async (data: any) => {
     }
     return false;
   } catch (e: any) {
-    console.error("Error saving to Firestore:", e?.message || e);
-    if (e?.message?.includes("too large")) {
-      console.error("CRITICAL: The data you are trying to save is too large for Firestore (1MB limit per document). This usually happens with large Base64 images.");
+    const errorMsg = e?.message || String(e);
+    console.error("Firestore save error:", errorMsg);
+    if (errorMsg.includes("too large")) {
+      throw new Error("Payload too large: The image or project data exceeds the 1MB Firestore limit. Please upload a smaller image or use a URL.");
     }
-    return false;
+    throw new Error(`Firestore save failed: ${errorMsg}`);
   }
 };
 
 // API Routes
+app.get("/api/health", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    firestore: db ? "initialized" : "null",
+    env: process.env.VERCEL ? "vercel" : "other",
+    readOnly: !!process.env.VERCEL
+  });
+});
+
 app.post("/api/login", (req, res) => {
   return res.json({ success: true, token: AUTH_TOKEN });
 });
@@ -213,28 +222,30 @@ app.post("/api/data", async (req, res) => {
   }
   
   console.log(`Received data save request. Keys: ${Object.keys(data).join(", ")}`);
-  const success = await saveFirestoreData(data);
   
-  // Do NOT write to local filesystem if we are in a read-only environment
-  let isReadOnly = false;
   try {
-    const testFile = path.join(process.cwd(), ".write-test");
-    await fs.writeFile(testFile, "test");
-    await fs.unlink(testFile);
-  } catch (e) {
-    isReadOnly = true;
-  }
-
-  if (!success && !isReadOnly) {
+    const success = await saveFirestoreData(data);
+    return res.json({ success });
+  } catch (err: any) {
+    const errorMessage = err?.message || "Unknown server error";
+    console.error("API save error:", errorMessage);
+    
+    // In case Firestore fails, try saving locally as fallback if not in read-only env
+    let localSaved = false;
     try {
       await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2));
-      console.log("Fallback: Data saved to local data.json");
-    } catch (e: any) {
-      console.error("Local write failed:", e?.message);
+      localSaved = true;
+      console.log("Fallback: Data saved to local data.json despite Firestore error");
+    } catch (e) {
+      // Local write failed (likely read-only environment)
     }
+
+    return res.status(500).json({ 
+      success: false, 
+      message: errorMessage,
+      fallback: localSaved
+    });
   }
-  
-  res.json({ success });
 });
 
 app.delete("/api/data", async (req, res) => {

@@ -678,13 +678,13 @@ function ProjectDetail({ projects, updateProject, deleteProject, themeSettings, 
       setAvatarUrl(b64);
       // Immediate save for avatar
       if (isAdmin) {
-        const success = await saveToFirebase("settings", "config", {
+        const result = await saveToFirebase("settings", "config", {
           websiteName, userName, userRole, userBio, categories, avatarUrl: b64
         });
-        if (success) {
+        if (result.success) {
           alert("头像已同步到云端！");
         } else {
-          alert("头像保存失败，可能是文件太大。");
+          alert(`头像保存失败: ${result.message || "文件太大"}`);
         }
       }
     };
@@ -1088,7 +1088,7 @@ export default function App() {
 
   // Sync to Firebase helper (now uses Proxy API)
   const saveToFirebase = async (path: string, docId: string, data: any) => {
-    if (!isAdmin) return false;
+    if (!isAdmin) return { success: false, message: "Not an admin" };
     try {
       // Create a payload that the server expects
       const payload: any = {};
@@ -1105,11 +1105,16 @@ export default function App() {
           token: "public-access"
         })
       });
+      
       const result = await res.json();
-      return result.success;
-    } catch (err) {
+      if (!result.success) {
+        console.error("Save failed:", result.message);
+        return { success: false, message: result.message || "Unknown error" };
+      }
+      return { success: true };
+    } catch (err: any) {
       console.error("Failed to save to Proxy API:", err);
-      return false;
+      return { success: false, message: err.message || "Network error" };
     }
   };
 
@@ -1172,13 +1177,13 @@ export default function App() {
   const saveProfile = async () => {
     if (!isAdmin) return;
     setIsEditingProfile(false);
-    const success = await saveToFirebase("settings", "config", {
+    const result = await saveToFirebase("settings", "config", {
       websiteName, userName, userRole, userBio, avatarUrl, categories
     });
-    if (success) {
+    if (result.success) {
       alert("个人资料保存成功！");
     } else {
-      alert("保存失败，请检查网络或重新登录。");
+      alert(`保存失败: ${result.message || "请检查网络或重新登录"}`);
     }
   };
 
@@ -1235,9 +1240,9 @@ export default function App() {
 
     setProjects(prev => [...prev, newProject]);
     if (isAdmin) {
-      const success = await saveToFirebase("projects", newProject.id, newProject);
-      if (!success) {
-        alert("同步到云端失败。请检查是否文件过大，或网络是否异常。");
+      const result = await saveToFirebase("projects", newProject.id, newProject);
+      if (!result.success) {
+        alert(`同步到云端失败: ${result.message || "可能是文件过大"}`);
       } else {
         alert("新作品发布并同步成功！");
       }
@@ -1256,9 +1261,9 @@ export default function App() {
     }
 
     setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
-    const success = await saveToFirebase("projects", updatedProject.id, updatedProject);
-    if (!success) {
-      alert("同步更改到云端失败。可能包含太大文件。");
+    const result = await saveToFirebase("projects", updatedProject.id, updatedProject);
+    if (!result.success) {
+      alert(`同步更改到云端失败: ${result.message || "可能包含太大文件"}`);
     }
   };
 
@@ -1298,9 +1303,9 @@ export default function App() {
     }
 
     setPageContents(prev => ({ ...prev, [type]: content }));
-    const success = await saveToFirebase("pages", type, content);
-    if (!success) {
-      alert("同步页面内容到云端失败。");
+    const result = await saveToFirebase("pages", type, content);
+    if (!result.success) {
+      alert(`同步页面内容到云端失败: ${result.message}`);
     }
   };
 
