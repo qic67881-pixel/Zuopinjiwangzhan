@@ -3,8 +3,7 @@ import path from "path";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-import { initializeApp, cert, getApps, getApp, App } from "firebase-admin/app";
-import { getFirestore, Firestore } from "firebase-admin/firestore";
+import admin from "firebase-admin";
 
 dotenv.config();
 
@@ -12,9 +11,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Initialize Firebase Admin
-let dbInstance: Firestore | null = null;
+let dbInstance: admin.firestore.Firestore | null = null;
 
-async function getDb(): Promise<Firestore> {
+async function getDb(): Promise<admin.firestore.Firestore> {
   if (dbInstance) return dbInstance;
 
   console.log("Attempting to initialize Firestore...");
@@ -25,53 +24,50 @@ async function getDb(): Promise<Firestore> {
     try {
       const configRaw = await fs.readFile(configPath, "utf-8");
       config = JSON.parse(configRaw);
-      console.log("Loaded config from firebase-applet-config.json");
     } catch (e) {
-      console.log("firebase-applet-config.json not found or invalid.");
+      // Ignored
     }
 
     const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
     let sa: any = null;
     
-    if (saRaw && saRaw.length > 50) { // Real SA is longer
+    if (saRaw && saRaw.length > 50) {
       try {
         const cleanedSA = saRaw.trim().replace(/^['"]|['"]$/g, '').replace(/\\n/g, '\n');
         sa = JSON.parse(cleanedSA);
       } catch (e) {
         try {
-          sa = JSON.parse(Buffer.from(saRaw, 'base64').toString());
+          sa = JSON.parse(Buffer.from(saRaw, 'base64').toString().replace(/\\n/g, '\n'));
         } catch (b64e) {
           console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT");
         }
       }
     }
 
-    // Prioritize JSON config if service account is not provided/valid
     const projectId = sa?.project_id || config.projectId || process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
     const dbId = config.firestoreDatabaseId || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
 
-    console.log(`Resolved Project ID: ${projectId || "MISSING"}`);
-    
-    let app: App;
-    if (getApps().length === 0) {
+    if (admin.apps.length === 0) {
       if (sa && projectId) {
-        app = initializeApp({
-          credential: cert(sa),
+        admin.initializeApp({
+          credential: admin.credential.cert(sa),
           projectId: projectId,
         });
-        console.log("Firebase initialized via Cert");
+        console.log("Firebase initialized via Service Account Cert");
       } else if (projectId) {
-        app = initializeApp({ projectId });
+        admin.initializeApp({ projectId });
         console.log("Firebase initialized via Project ID");
       } else {
-        app = initializeApp();
+        admin.initializeApp();
         console.log("Firebase initialized via Default Credentials");
       }
-    } else {
-      app = getApp();
     }
     
-    dbInstance = getFirestore(app, dbId && dbId !== "(default)" ? dbId : undefined);
+    if (dbId && dbId !== "(default)") {
+      dbInstance = admin.firestore(dbId);
+    } else {
+      dbInstance = admin.firestore();
+    }
     
     if (!dbInstance) throw new Error("Firestore instance creation returned null");
     
