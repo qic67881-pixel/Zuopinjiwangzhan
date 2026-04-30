@@ -12,80 +12,82 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Initialize Firebase Admin
-let db: admin.firestore.Firestore | null = null;
+let dbInstance: admin.firestore.Firestore | null = null;
 
-try {
-  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
-  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+async function getDb(): Promise<admin.firestore.Firestore> {
+  if (dbInstance) return dbInstance;
+
+  console.log("Attempting to initialize Firestore...");
   
-  let config: any = {};
   try {
-    const configRaw = await fs.readFile(configPath, "utf-8");
-    config = JSON.parse(configRaw);
-  } catch (e) {
-    console.warn("Could not read firebase-applet-config.json, using environment variables.");
-  }
-
-  // Use environment variables as priority/fallback
-  const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
-  let sa: any = null;
-  
-  if (saRaw) {
+    const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+    let config: any = {};
     try {
-      // Strip potential BOM and trim spaces/quotes
-      const cleanedSA = saRaw.trim().replace(/^['"]|['"]$/g, '');
-      sa = JSON.parse(cleanedSA);
+      const configRaw = await fs.readFile(configPath, "utf-8");
+      config = JSON.parse(configRaw);
+      console.log("Loaded config from firebase-applet-config.json");
     } catch (e) {
+      console.log("firebase-applet-config.json not found, relying on environment variables.");
+    }
+
+    const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
+    let sa: any = null;
+    
+    if (saRaw) {
+      console.log("FIREBASE_SERVICE_ACCOUNT env var detected, length:", saRaw.length);
       try {
-        sa = JSON.parse(Buffer.from(saRaw, 'base64').toString());
-      } catch (b64e) {
-        console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT JSON. Please check the variable content.");
+        // Strip potential BOM and trim spaces/quotes
+        const cleanedSA = saRaw.trim().replace(/^['"]|['"]$/g, '').replace(/\\n/g, '\n');
+        sa = JSON.parse(cleanedSA);
+        console.log("Successfully parsed Service Account JSON");
+      } catch (e: any) {
+        console.error("JSON parse failed for Service Account, trying base64 fallback. Error:", e.message);
+        try {
+          sa = JSON.parse(Buffer.from(saRaw, 'base64').toString());
+          console.log("Successfully parsed Service Account from Base64");
+        } catch (b64e: any) {
+          console.error("Base64 parse also failed:", b64e.message);
+        }
       }
     }
-  }
 
-  const projectId = sa?.project_id || config.projectId || process.env.VITE_FIREBASE_PROJECT_ID;
-  const dbId = config.firestoreDatabaseId || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
+    const projectId = sa?.project_id || config.projectId || process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
+    const dbId = config.firestoreDatabaseId || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
 
-  if (admin.apps.length === 0) {
-    if (sa && projectId) {
-      admin.initializeApp({
-        credential: admin.credential.cert(sa),
-        projectId: projectId,
-      });
-      console.log("Firebase Admin initialized with Service Account for project:", projectId);
-    } else if (projectId) {
-      admin.initializeApp({
-        projectId: projectId,
-      });
-      console.log("Firebase Admin initialized with Project ID:", projectId);
-    } else {
-      try {
-        admin.initializeApp();
-        console.log("Firebase Admin initialized with default credentials");
-      } catch (e) {
-        console.warn("Firebase Admin failed to initialize. Will fallback to local data if available.");
-      }
-    }
-  }
-  
-  if (admin.apps.length > 0) {
-    try {
-      // Standard way to get Firestore instance
-      if (dbId && dbId !== "(default)") {
-        // @ts-ignore
-        db = admin.firestore(dbId);
-        console.log(`Firestore initialized for database: ${dbId}`);
+    console.log(`Resolved Project ID: ${projectId || "MISSING"}`);
+    console.log(`Resolved Database ID: ${dbId || "(default)"}`);
+
+    if (admin.apps.length === 0) {
+      if (sa && projectId) {
+        admin.initializeApp({
+          credential: admin.credential.cert(sa),
+          projectId: projectId,
+        });
+        console.log("Firebase Admin initialized via Cert.");
+      } else if (projectId) {
+        admin.initializeApp({ projectId });
+        console.log("Firebase Admin initialized via Project ID.");
       } else {
-        db = admin.firestore();
-        console.log("Firestore initialized for default database");
+        admin.initializeApp();
+        console.log("Firebase Admin initialized via Default Application Credentials.");
       }
-    } catch (fsErr: any) {
-      console.error("Firestore initialization failed:", fsErr.message);
     }
+    
+    if (dbId && dbId !== "(default)") {
+      // @ts-ignore
+      dbInstance = admin.firestore(dbId);
+    } else {
+      dbInstance = admin.firestore();
+    }
+    
+    if (!dbInstance) throw new Error("Firestore instance creation returned null");
+    
+    console.log("Firestore initialized successfully!");
+    return dbInstance;
+  } catch (err: any) {
+    console.error("DB Initialization FATAL ERROR:", err.message);
+    throw err;
   }
-} catch (e: any) {
-  console.error("Critical Firebase initialization error:", e?.message || e);
 }
 
 const DATA_FILE = path.join(process.cwd(), "data.json");
@@ -97,12 +99,8 @@ const PORT = parseInt(process.env.PORT || "3000", 10);
 app.use(express.json({ limit: "50mb" }));
 
 const getFirestoreData = async () => {
-  if (!db) {
-    console.error("getFirestoreData: Firestore DB not initialized");
-    return null;
-  }
-  
   try {
+    const db = await getDb();
     console.log("Starting Firestore data fetch...");
     const [projectsSnap, pagesSnap, configSnap, themeSnap] = await Promise.all([
       db.collection("projects").get(),
@@ -131,11 +129,8 @@ const getFirestoreData = async () => {
 };
 
 const saveFirestoreData = async (data: any) => {
-  if (!db) {
-    throw new Error("Firestore database not initialized. Please verify your FIREBASE_SERVICE_ACCOUNT or firebase-applet-config.json settings.");
-  }
-  
   try {
+    const db = await getDb();
     const batch = db.batch();
     let hasOps = false;
     
@@ -182,9 +177,8 @@ const saveFirestoreData = async (data: any) => {
 app.get("/api/health", (req, res) => {
   res.json({ 
     status: "ok", 
-    firestore: db ? "initialized" : "null",
-    env: process.env.VERCEL ? "vercel" : "other",
-    readOnly: !!process.env.VERCEL
+    firestore: dbInstance ? "initialized" : "uninitialized",
+    env: process.env.VERCEL ? "vercel" : "other"
   });
 });
 
@@ -254,9 +248,8 @@ app.delete("/api/data", async (req, res) => {
     return res.status(403).json({ success: false, message: "Unauthorized" });
   }
 
-  if (!db) return res.status(500).json({ success: false, message: "DB not initialized" });
-
   try {
+    const db = await getDb();
     console.log(`Deleting project: ${projectId}`);
     await db.collection("projects").doc(projectId).delete();
     res.json({ success: true });
@@ -271,7 +264,7 @@ const distPath = path.join(process.cwd(), "dist");
 
 if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
   app.use(express.static(distPath));
-  app.get("*", (req, res) => {
+  app.get("*", async (req, res) => {
     if (req.path.startsWith("/api/")) return res.status(404).json({ error: "API not found" });
     res.sendFile(path.join(distPath, "index.html"));
   });
