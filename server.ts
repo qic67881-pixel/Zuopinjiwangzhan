@@ -3,8 +3,8 @@ import path from "path";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-import admin from "firebase-admin";
-import { getFirestore } from "firebase-admin/firestore";
+import { initializeApp, cert, getApps, getApp, App } from "firebase-admin/app";
+import { getFirestore, Firestore } from "firebase-admin/firestore";
 
 dotenv.config();
 
@@ -12,9 +12,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Initialize Firebase Admin
-let dbInstance: admin.firestore.Firestore | null = null;
+let dbInstance: Firestore | null = null;
 
-async function getDb(): Promise<admin.firestore.Firestore> {
+async function getDb(): Promise<Firestore> {
   if (dbInstance) return dbInstance;
 
   console.log("Attempting to initialize Firestore...");
@@ -27,65 +27,58 @@ async function getDb(): Promise<admin.firestore.Firestore> {
       config = JSON.parse(configRaw);
       console.log("Loaded config from firebase-applet-config.json");
     } catch (e) {
-      console.log("firebase-applet-config.json not found, relying on environment variables.");
+      console.log("firebase-applet-config.json not found or invalid.");
     }
 
     const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
     let sa: any = null;
     
-    if (saRaw) {
-      console.log("FIREBASE_SERVICE_ACCOUNT env var detected, length:", saRaw.length);
+    if (saRaw && saRaw.length > 50) { // Real SA is longer
       try {
-        // Strip potential BOM and trim spaces/quotes
         const cleanedSA = saRaw.trim().replace(/^['"]|['"]$/g, '').replace(/\\n/g, '\n');
         sa = JSON.parse(cleanedSA);
-        console.log("Successfully parsed Service Account JSON");
-      } catch (e: any) {
-        console.error("JSON parse failed for Service Account, trying base64 fallback. Error:", e.message);
+      } catch (e) {
         try {
           sa = JSON.parse(Buffer.from(saRaw, 'base64').toString());
-          console.log("Successfully parsed Service Account from Base64");
-        } catch (b64e: any) {
-          console.error("Base64 parse also failed:", b64e.message);
+        } catch (b64e) {
+          console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT");
         }
       }
     }
 
+    // Prioritize JSON config if service account is not provided/valid
     const projectId = sa?.project_id || config.projectId || process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
     const dbId = config.firestoreDatabaseId || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
 
     console.log(`Resolved Project ID: ${projectId || "MISSING"}`);
-    console.log(`Resolved Database ID: ${dbId || "(default)"}`);
-
-    if (admin.apps.length === 0) {
+    
+    let app: App;
+    if (getApps().length === 0) {
       if (sa && projectId) {
-        admin.initializeApp({
-          credential: admin.credential.cert(sa),
+        app = initializeApp({
+          credential: cert(sa),
           projectId: projectId,
         });
-        console.log("Firebase Admin initialized via Cert.");
+        console.log("Firebase initialized via Cert");
       } else if (projectId) {
-        admin.initializeApp({ projectId });
-        console.log("Firebase Admin initialized via Project ID.");
+        app = initializeApp({ projectId });
+        console.log("Firebase initialized via Project ID");
       } else {
-        admin.initializeApp();
-        console.log("Firebase Admin initialized via Default Application Credentials.");
+        app = initializeApp();
+        console.log("Firebase initialized via Default Credentials");
       }
+    } else {
+      app = getApp();
     }
     
-    if (dbId && dbId !== "(default)") {
-      // @ts-ignore
-      dbInstance = admin.firestore(dbId);
-    } else {
-      dbInstance = admin.firestore();
-    }
+    dbInstance = getFirestore(app, dbId && dbId !== "(default)" ? dbId : undefined);
     
     if (!dbInstance) throw new Error("Firestore instance creation returned null");
     
     console.log("Firestore initialized successfully!");
     return dbInstance;
   } catch (err: any) {
-    console.error("DB Initialization FATAL ERROR:", err.message);
+    console.error("DB Initialization ERROR:", err.message);
     throw err;
   }
 }
